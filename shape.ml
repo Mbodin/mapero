@@ -9,6 +9,12 @@ let turn_clockwise = function
   | South -> East
   | East -> North
 
+let uturn = function
+  | North -> South
+  | West -> East
+  | South -> North
+  | East -> West
+
 let merge s1 s2 =
   match s1, s2 with
   | Round, s | s, Round -> s
