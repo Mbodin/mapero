@@ -43,3 +43,6 @@ type shape =
   | Half_circle of direction (* The direction of the straight border. *)
   | Quarter of direction (* The direction of the first straight border clockwise. *)
 
+
+type t = shape * color
+
