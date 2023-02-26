@@ -13,9 +13,7 @@ let _ =
   (* TODO *)
   (* The DOM object in which the map should be displayed. *)
   let map_object = (* TODO *) in
-  (* Getting the kind of information we are interested in. *)
-  let map_settings = (* TODO *) in
-  (* Translating it into an Overpass query, as a function of the map_info. *)
-  let overpass_query = (* TODO *) map_settings in
+  (* Building an Overpass query, as a function of the map_info. *)
+  let overpass_query = (* TODO *) Settings.objects in
   display_map overpass_query map_object !map_info
 
