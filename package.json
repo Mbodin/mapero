@@ -1,0 +1,26 @@
+{
+	"name": "mapero",
+	"version": "0.1",
+	"description": "An OSM-renderer as LEGO dots",
+	"license": "AGPL-3.0-or-later",
+	"esy": {
+		"build": "dune build --profile release @all",
+		"buildsInSource": "_build"
+	},
+	"scripts": {
+		"clean": "rm -R _build",
+		"test": "dune runtest",
+		"doc": "dune build @doc",
+		"server": "python -m SimpleHTTPServer"
+	},
+	"dependencies": {
+		"@opam/dune": ">=2.0",
+		"@opam/lwt_ppx": "*",
+		"@opam/js_of_ocaml": "~4.1",
+		"@opam/js_of_ocaml-lwt": "*",
+		"@opam/js_of_ocaml-ppx": "*",
+		"@opam/js_of_ocaml-ppx_deriving_json": "*",
+		"ocaml": "~4.14"
+	}
+}
+
