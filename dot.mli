@@ -7,7 +7,7 @@ type color =
   | Bright_green
   | Bright_light_blue
   | Bright_light_orange
-  | Bright_yellow
+  | Bright_light_yellow
   | Bright_pink
   | Coral
   | Dark_azure
