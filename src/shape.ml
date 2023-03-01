@@ -15,7 +15,7 @@ let uturn = function
   | South -> North
   | East -> West
 
-let merge s1 s2 =
+let join s1 s2 =
   match s1, s2 with
   | Round, s | s, Round -> s
   | Square, _ | _, Square -> Square
@@ -25,7 +25,7 @@ let merge s1 s2 =
     else if d2 = turn_clockwise d1 then Quarter d2
     else Square
   | Half_circle d1, Quarter d2 | Quarter d2, Half_circle d1 ->
-    if d2 = d1 or turn_clockwise d2 = d1 then Quarter d2 else Square
+    if d2 = d1 || turn_clockwise d2 = d1 then Quarter d2 else Square
   | Quarter d1, Quarter d2 ->
     if d1 = d2 then Quarter d1 else Square
 

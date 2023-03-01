@@ -6,28 +6,28 @@ let expand l =
   List.concat_map (fun (k, vs) -> List.map (fun v -> (Overpass.Exact k, Overpass.Exact v)) vs) l
 
 let node l ?(style = Map.Round) color =
-  (Node, exact l, style, color)
+  (Overpass.Node, exact l, style, color)
 
 let rnode l ?(style = Map.Round) color =
-  (Node, regexp l, style, color)
+  (Overpass.Node, regexp l, style, color)
 
 let rvnode l ?(style = Map.Round) color =
-  (Node, vregexp l, style, color)
+  (Overpass.Node, vregexp l, style, color)
 
 let enode l ?(style = Map.Round) color =
-  (Node, expand l, style, color)
+  (Overpass.Node, expand l, style, color)
 
 let way l ?(style = Map.Adaptive) color =
-  (Way, exact l, style, color)
+  (Overpass.Way, exact l, style, color)
 
 let rway l ?(style = Map.Adaptive) color =
-  (Way, regexp l, style, color)
+  (Overpass.Way, regexp l, style, color)
 
 let vrway l ?(style = Map.Adaptive) color =
-  (Way, vregexp l, style, color)
+  (Overpass.Way, vregexp l, style, color)
 
 let eway l ?(style = Map.Adaptive) color =
-  (Way, expand l, style, color)
+  (Overpass.Way, expand l, style, color)
 
 
 

@@ -1,5 +1,6 @@
 
 (* A type representing the map. *)
+(* Warning: current implementation is imperative. *)
 type t
 
 (* Given the dimensions, create an empty map. *)
@@ -11,7 +12,8 @@ type coordinates = int * int
 (* Float coordinates, representing raw OSM data. *)
 type real_coordinates = float * float
 
-val convert_real_coordinates : real_coordinates -> coordinates
+val convert_coordinates_from_real : real_coordinates -> coordinates
+val convert_coordinates_to_real : coordinates -> real_coordinates
 
 (* The style of objects within the maps. *)
 type style =
@@ -34,8 +36,8 @@ val add_PoI : t -> real_coordinates -> ?priority:Structures.priority -> ?level:i
 val add_line : t -> real_coordinates (* start coordinates *) -> real_coordinates (* end coordinates *) ->
   ?priority:Structures.priority (* priority of the core part of the line *) ->
   ?non_core_priority:Structures.priority (* priority of the non-core parts of the line. *) ->
-  ?level:int -> ?style:style -> ?non_core_style:style option (* None means that the non-core parts won't be drawn. *) ->
-  Dot.color -> t
+  ?style:style -> ?non_core_style:style option (* None means that the non-core parts won't be drawn. *) ->
+  ?level:int -> Dot.color -> t
 
 (* Draw a polygon, given as a list of coordinates.
   The style of the border and the inner part can be set independently. *)
@@ -43,7 +45,7 @@ val add_polygon : t -> real_coordinates list ->
   ?border_priority:Structures.priority -> ?inner_priority:Structures.priority ->
   ?border_style:style -> ?inner_style:style option (* None means that they won't be drawn. *) ->
   ?border_level:int -> ?inner_level:int ->
-  Dot.color -> ?inner_color:Dot.colot -> t
+  Dot.color -> ?inner_color:Dot.color -> unit -> t
 
 (* Add a text in a given position.
   The option states whether non-letter characters will be displayed, or whether the function
@@ -52,5 +54,5 @@ val add_text : t -> coordinates -> ?only_letters:bool ->
   ?priority:Structures.priority -> ?level:int -> string -> t
 
 (* Convert the map into a matrice of dots, loosing the priority information. *)
-val to_dot_matrix : t -> Dot.t array array
+val to_dot_matrix : t -> Dot.t option array array
 

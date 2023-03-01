@@ -1,5 +1,5 @@
 
-include StructuresSig
+open StructuresSig
 
 
 type priority =
@@ -21,6 +21,11 @@ module DirectedSetFromOrder (S : Set.OrderedType)
 module DirectedSetProduct (S1 : DirectedSet) (S2 : DirectedSet)
   : DirectedSet with type t = S1.t * S2.t
 
+(* Adding a top element to a set as a unique ordering. *)
 module TopDirectedSet (S : sig type t val top : t end)
   : DirectedSet with type t = S.t
+
+(* Adding a None element to a directed set. *)
+module OptionDirectedSet (S : DirectedSet)
+  : DirectedSet with type t = S.t option
 

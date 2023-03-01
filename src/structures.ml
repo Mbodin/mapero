@@ -1,5 +1,5 @@
 
-include StructuresSig
+open StructuresSig
 
 
 type priority =
@@ -10,6 +10,8 @@ type priority =
   | VeryHigh
 
 module Priority = struct
+
+  type t = priority
 
   let to_number = function
     | VeryLow -> -2
@@ -25,7 +27,7 @@ end
 
 module AddPriority (P : Set.OrderedType) (S : DirectedSet) = struct
 
-  type t = priority * S.t
+  type t = P.t * S.t
 
   let join (p1, e1) (p2, e2) =
     let c = P.compare p1 p2 in
@@ -41,7 +43,7 @@ module DirectedSetFromOrder (S : Set.OrderedType) = struct
   include S
 
   let join e1 e2 =
-    let c = P.compare e1 e2 in
+    let c = S.compare e1 e2 in
     if c < 0 then e2
     else if c > 0 then e1
     else (* c = 0, e1 = e2 *) e1
@@ -63,6 +65,17 @@ module TopDirectedSet (S : sig type t val top : t end) = struct
   let join a b =
     if a = b then a
     else top
+
+end
+
+module OptionDirectedSet (S : DirectedSet) = struct
+  
+  type t = S.t option
+
+  let join a b =
+    match a, b with
+    | None, o | o, None -> o
+    | Some a, Some b -> Some (S.join a b)
 
 end
 
