@@ -1,3 +1,3 @@
 
-val objects : (Overpass.kind * Overpass.attributes * Map.style * Dot.color) list
+val objects : (Overpass.kind * Overpass.attributes * Geometry.style * Dot.color) list
 

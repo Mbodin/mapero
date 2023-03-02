@@ -2,6 +2,19 @@
 open StructuresSig
 
 
+module IntOrder = struct
+  type t = int
+  let compare : t -> t -> int = compare
+end
+
+module ProductOrderedType (S1 : Set.OrderedType) (S2 : Set.OrderedType) = struct
+  type t = S1.t * S2.t
+  let compare (a1, a2) (b1, b2) =
+    match S1.compare a1 b1 with
+    | 0 -> S2.compare a2 b2
+    | v -> v
+end
+
 type priority =
   | VeryLow
   | Low

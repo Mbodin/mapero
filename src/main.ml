@@ -11,7 +11,7 @@ let _ =
   (* The default information about the map. *)
   let map_info = ref (* TODO: bbox, zoom level, etc. *)() in
   (* Preparing the interface. *)
-  (* TODO *)
+  let canvas = Canvas.init () in
   (* The DOM object in which the map should be displayed. *)
   let map_object = (* TODO *)() in
   (* Building an Overpass query, as a function of the map_info. *)

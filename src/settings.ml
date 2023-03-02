@@ -7,40 +7,40 @@ let rec expand cxt = function
   | (k, vs) :: l ->
     List.concat_map (fun v -> expand (fun l -> cxt ((Overpass.Exact k, Overpass.Exact v) :: l)) l) vs
 
-let node l ?(style = Map.Round) color =
+let node l ?(style = Geometry.Round) color =
   [(Overpass.Node, exact l, style, color)]
 
-let rnode l ?(style = Map.Round) color =
+let rnode l ?(style = Geometry.Round) color =
   [(Overpass.Node, regexp l, style, color)]
 
-let rvnode l ?(style = Map.Round) color =
+let rvnode l ?(style = Geometry.Round) color =
   [(Overpass.Node, vregexp l, style, color)]
 
-let enode l ?(style = Map.Round) color =
+let enode l ?(style = Geometry.Round) color =
   expand (fun l -> [(Overpass.Node, l, style, color)]) l
 
-let way l ?(style = Map.Adaptive) color =
+let way l ?(style = Geometry.Adaptive) color =
   [(Overpass.Way, exact l, style, color)]
 
-let rway l ?(style = Map.Adaptive) color =
+let rway l ?(style = Geometry.Adaptive) color =
   [(Overpass.Way, regexp l, style, color)]
 
-let vrway l ?(style = Map.Adaptive) color =
+let vrway l ?(style = Geometry.Adaptive) color =
   [(Overpass.Way, vregexp l, style, color)]
 
-let eway l ?(style = Map.Adaptive) color =
+let eway l ?(style = Geometry.Adaptive) color =
   expand (fun l -> [(Overpass.Way, l, style, color)]) l
 
-let poly l ?(style = Map.Adaptive) color =
+let poly l ?(style = Geometry.Adaptive) color =
   [(Overpass.Polygon, exact l, style, color)]
 
-let rpoly l ?(style = Map.Adaptive) color =
+let rpoly l ?(style = Geometry.Adaptive) color =
   [(Overpass.Polygon, regexp l, style, color)]
 
-let vrpoly l ?(style = Map.Adaptive) color =
+let vrpoly l ?(style = Geometry.Adaptive) color =
   [(Overpass.Polygon, vregexp l, style, color)]
 
-let epoly l ?(style = Map.Adaptive) color =
+let epoly l ?(style = Geometry.Adaptive) color =
   expand (fun l -> [(Overpass.Polygon, l, style, color)]) l
 
 

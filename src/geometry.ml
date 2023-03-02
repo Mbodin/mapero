@@ -12,11 +12,6 @@ type style =
   | Adaptive
 
 
-module IntOrder = struct
-  type t = int
-  let compare : t -> t -> int = compare
-end
-
 module Open = struct (* This module just serve to circumvent the absence of [let open in] in the syntax for modules. *)
 open Structures
 module Data =

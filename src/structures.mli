@@ -2,6 +2,12 @@
 open StructuresSig
 
 
+module IntOrder : Set.OrderedType with type t = int
+
+module ProductOrderedType (S1 : Set.OrderedType) (S2 : Set.OrderedType)
+  : Set.OrderedType with type t = S1.t * S2.t
+
+
 type priority =
   | VeryLow
   | Low

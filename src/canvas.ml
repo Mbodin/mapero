@@ -23,25 +23,38 @@ let rec clear_node n =
   | None -> ()
 
 
+type g = Dom.node
 
-let svg =
+
+module Open = struct
+open Structures
+module I3Map =
+  Map.Make (ProductOrderedType (ProductOrderedType (IntOrder) (IntOrder)) (IntOrder))
+end
+open Open
+
+type t = {
+  svg : Dom.node ;
+  groups : g I3Map.t
+}
+
+
+let init_svg () =
   let id = Js.string "map" in
-  Js.Opt.get (Dom_html.document##getElementById id) (fun () ->
-      (* No map found: creating one. *)
-      let svg = document##createElement (Js.string "svg") in
-      set_attributes svg [
-          ("version", Js.number_of_float 1.1) ;
-          ("width", Js.number_of_float 100.) ;
-          ("height", Js.number_of_float 100.) ;
-          ("xmlns", Js.string "http://www.w3.org/2000/svg") ;
-          ("id", id)
-        ] ;
-      document##.body##appendChild svg ;
-      svg
-    )
-
-
-let init_svg (x, y) =
+  let svg =
+    Js.Opt.get (Dom_html.document##getElementById id) (fun () ->
+        (* No map found: creating one. *)
+        let svg = document##createElement (Js.string "svg") in
+        set_attributes svg [
+            ("version", Js.number_of_float 1.1) ;
+            ("width", Js.number_of_float 100.) ;
+            ("height", Js.number_of_float 100.) ;
+            ("xmlns", Js.string "http://www.w3.org/2000/svg") ;
+            ("id", id)
+          ] ;
+        document##.body##appendChild svg ;
+        svg
+      ) in
   (* Setting the global attributes of the svg. *)
   let convert i = Js.number_of_float (Float.of_int i) in
   let width = convert (x * pixel_stud) in
@@ -50,6 +63,18 @@ let init_svg (x, y) =
       ("width", width) ;
       ("height", height)
     ] ;
+  svg
+
+let init () = {
+    svg = init_svg () ;
+    groups = I3Map.empty
+  }
+
+
+(* TODO: only generate groups g on demand. *)
+(* TODO: do not draw in such a function: it should only generate the groups. *)
+(* TODO: add some general groups so that we can easily drag-and-drop the whole map. *)
+let init_svg (x, y) =
   (* Clearing the svg. *)
   clear_node svg ;
   (* Filling the svg with groups for each studs, as well as a base plate. *)
