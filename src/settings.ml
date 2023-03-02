@@ -46,23 +46,25 @@ let epoly l ?(style = Map.Adaptive) color =
 
 
 let objects =
-  List.flatten [
+  List.flatten Dot.[
     (* Main PoIs I'm interested at *)
-    node [("natural", "tree")] Dot.Bright_green ;
-    node [("leisure", "playground")] Dot.Satin_trans_clear ;
-    way [("leisure", "playground")] Dot.Satin_trans_clear ;
-    node [("amenity", "public_bookcase")] Dot.Trans_orange ;
+    node [("natural", "tree")] Bright_green ;
+    node [("leisure", "playground")] Satin_trans_clear ;
+    way [("leisure", "playground")] Satin_trans_clear ;
+    node [("amenity", "public_bookcase")] Trans_orange ;
     (* Some good references PoIs *)
-    node [("amenity", "bicycle_parking"); ("bicycle_parking", "wide_stands")] Dot.Dark_turquoise ;
-    node [("amenity", "bicycle_parking"); ("bicycle_parking", "stands")] Dot.Dark_turquoise ;
-    node [("amenity", "bicycle_parking"); ("bicycle_parking", "bollard")] Dot.Dark_turquoise ;
-    node [("emergency", "fire_hydrant"); ("fire_hydrant:type", "pillar")] Dot.Coral ;
+    node [("amenity", "bicycle_parking"); ("bicycle_parking", "wide_stands")] Dark_turquoise ;
+    node [("amenity", "bicycle_parking"); ("bicycle_parking", "stands")] Dark_turquoise ;
+    node [("amenity", "bicycle_parking"); ("bicycle_parking", "bollard")] Dark_turquoise ;
+    node [("emergency", "fire_hydrant"); ("fire_hydrant:type", "pillar")] Coral ;
     (* Structurung elements *)
-    vrway [("waterway", ".*")] Dot.Dark_azure ;
-    eway [("highway", ["motorway"; "trunk"; "primary"; "secondary"; "tertiary"; "unclassified"; "road"])] Dot.Lavender ;
-    eway [("highway", ["motorway_link"; "trunk_link"; "primary_link"; "secondary_link"; "tertiary_link"])] Dot.Lavender ;
-    eway [("highway", ["residential"; "living_street"; "service"; "track"])] Dot.Yellow ;
-    eway [("highway", ["pedestrian"; "footway"; "bridleway"; "path"; "cycleway"; "crossing"])] Dot.Bright_light_blue ;
-    vrpoly [("building", ".*")] Dot.Bright_pink
+    vrway [("waterway", ".*")] Dark_azure ;
+    eway [("highway", ["motorway"; "trunk"; "primary"; "secondary"; "tertiary"; "unclassified"; "road"])] Lavender ;
+    eway [("highway", ["motorway_link"; "trunk_link"; "primary_link"; "secondary_link"; "tertiary_link"])] Lavender ;
+    eway [("highway", ["residential"; "living_street"; "service"; "track"])] Yellow ;
+    eway [("highway", ["pedestrian"; "footway"; "bridleway"; "path"; "cycleway"; "crossing"])] Bright_light_blue ;
+    vrpoly [("building", ".*")] Bright_pink ;
+    poly [("leisure", "playground")] Satin_trans_clear ;
+    poly [("leisure", "parc")] Yellowish_green
   ]
 

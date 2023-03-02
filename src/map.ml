@@ -144,6 +144,7 @@ let add_line m xy xy'
             map_adaptive shape style in
           add_PoI_int m (xc, y) priority level shape color) in
       Some m
+    else if x < 0 && x' < 0 then Some m
     else None
   in
   match special_cases with
@@ -162,6 +163,15 @@ let add_line m xy xy'
     let rec aux m (xc, yc) =
       if (xc, yc) = (end_x, end_y) || not (within_bounds m (xc, yc)) then m
       else
+        let draw m xy is_core adaptive_style =
+          let draw style =
+            let shape = map_adaptive adaptive_style style in
+            add_PoI_int m xy priority level shape color in
+          if is_core then draw style
+          else
+            match non_core_style with
+            | None -> m
+            | Some style -> draw style in
         let y' = y_at (xc + 1) in
         let yc' = next_yt yc in
         let x' = x_at yc' in
@@ -170,25 +180,37 @@ let add_line m xy xy'
         let distance_y = Float.abs (y' -. Float.of_int xc) in
         if distance_x > distance_y then
           (* The smallest distance is to go to the right. *)
-          (* TODO: determine whether the current cell is core or non-core. *)
-          let m = add_PoI_int m (xc, yc) priority level (Dot.Half_circle Dot.West) color in
+          let is_core = true (* TODO *) in
+          let m = draw m (xc, yc) is_core (Dot.Half_circle Dot.West) in
           let xc = xc + 1 in
-          let m = add_PoI_int m (xc, yc) priority level (Dot.Half_circle Dot.East) color in
+          let is_core = true (* TODO *) in
+          let m = draw m (xc, yc) is_core (Dot.Half_circle Dot.East) in
           aux m (xc, yc)
         else
           (* The smallest distance is to go above or below. *)
-          (* TODO: determine whether the current cell is core or non-core. *)
+          let is_core = true (* TODO *) in
           let dir = if slope > 0. then Dot.North else Dot.South in
-          let m = add_PoI_int m (xc, yc) priority level (Dot.Half_circle dir) color in
-          let m = add_PoI_int m (xc, yc') priority level (Dot.Half_circle (Shape.uturn dir)) color in
+          let m = draw m (xc, yc) is_core (Dot.Half_circle dir) in
+          let is_core = true (* TODO *) in
+          let m = draw m (xc, yc') is_core (Dot.Half_circle (Shape.uturn dir)) in
           aux m (xc, yc')
     in
     (* Drawing as a dot the extremities. *)
-    let draw_extremes m xy = add_PoI_int m xy priority level Dot.Round color in
-    let start_xy = convert_coordinates_from_real (x, y) in
+    let draw_extremes m xy =
+      let shape = map_adaptive Dot.Round style in
+      add_PoI_int m xy priority level shape color in
+    let start_xy =
+      let xy =
+        if x < 0. then (0., y_at 0)
+        else (x, y) in
+      convert_coordinates_from_real xy in
+    (* TODO: As is, if the extremes are out of bounds, then the drawn extremeties will be
+      displayed as half-circle instead of quarters or square. *)
+    (* TODO: As is, if the x-coordinate of the leftbound extremity is out of bounds, but
+      that the line eventually becomes in bounds, then it won't be displayed. *)
     let m = draw_extremes m start_xy in
     let m = draw_extremes m (end_x, end_y) in
-    (* TODO: if xy is out of the map, start with better coordinates. *)
+    (* Drawing in between. *)
     aux m start_xy
 
 let add_polygon m xyl
