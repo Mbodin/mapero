@@ -20,6 +20,7 @@ type style =
   | Round (* Must be round *)
   | Square (* Must be squared *)
   | Adaptive (* Following the shape of the drawn object. *)
+  | Pattern of (int * int -> Dot.shape) (* Some kind of original pattern (e.g., waves). *)
 
 
 (* Add a single dot to the map, given its coordinates. *)

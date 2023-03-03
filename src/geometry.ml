@@ -10,6 +10,7 @@ type style =
   | Round
   | Square
   | Adaptive
+  | Pattern of (int * int -> Dot.shape)
 
 
 module Open = struct (* This module just serve to circumvent the absence of [let open in] in the syntax for modules. *)
@@ -54,18 +55,20 @@ let add m (x, y) v =
   else m
 
 
-let map_adaptive v = function
+let map_adaptive xy adaptive = function
   | Round -> Dot.Round
   | Square -> Dot.Square
-  | Adaptive -> v
+  | Adaptive -> adaptive
+  | Pattern f -> f xy
 
-let add_PoI_int m xy priority level shape color =
+let add_PoI_int m xy priority level style ?(adaptive=Dot.Round) color =
+  let shape = map_adaptive xy adaptive style in
   let v = (priority, (level, Some (shape, color))) in
   add m xy v
 
 let add_PoI m xy ?(priority = Structures.High) ?(level = 0) ?(style = Round) color =
-  let shape = map_adaptive Dot.Round style in
-  add_PoI_int m (convert_coordinates_from_real xy) priority level shape color
+  add_PoI_int m (convert_coordinates_from_real xy)
+    priority level style ~adaptive:Dot.Round color
 
 
 let is_letter c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
@@ -74,7 +77,7 @@ let add_text m (x, y) ?(only_letters = true)
     ?(priority = Structures.VeryHigh) ?(level = max_int) str =
   Seq.fold_lefti (fun m i c ->
       if only_letters && not (is_letter c) then m
-      else add_PoI_int m (x + i, y) priority level Dot.Round (Dot.Letter c)
+      else add_PoI_int m (x + i, y) priority level Round (Dot.Letter c)
     ) m (String.to_seq str)
 
 
@@ -112,32 +115,27 @@ let add_line m xy xy'
     let (x, y) = convert_coordinates_from_real xy in
     let (x', y') = convert_coordinates_from_real xy' in
     if x = x' && y = y' then
-      let shape = map_adaptive Dot.Round style in
-      let m = add_PoI_int m (x, y) priority level shape color in
+      let m = add_PoI_int m (x, y) priority level style color in
       Some m
     else if x = x' (* y <> y' *) then
       let m =
         let (y, y') = if y > y' then (y', y) else (y, y') in
         fold_within_y m y y' (fun m yc ->
           let shape =
-            let shape =
-              if yc = y then Dot.Half_circle Dot.South
-              else if yc = y' then Dot.Half_circle Dot.North
-              else Dot.Square in
-            map_adaptive shape style in
-          add_PoI_int m (x, yc) priority level shape color) in
+            if yc = y then Dot.Half_circle Dot.South
+            else if yc = y' then Dot.Half_circle Dot.North
+            else Dot.Square in
+          add_PoI_int m (x, yc) priority level style ~adaptive:shape color) in
       Some m
     else if y = y' (* x <> x' *) then
       let m =
         let (x, x') = if x > x' then (x', x) else (x, x') in
         fold_within_x m x x' (fun m xc ->
           let shape =
-            let shape =
-              if xc = x then Dot.Half_circle Dot.West
-              else if xc = x' then Dot.Half_circle Dot.East
-              else Dot.Square in
-            map_adaptive shape style in
-          add_PoI_int m (xc, y) priority level shape color) in
+            if xc = x then Dot.Half_circle Dot.West
+            else if xc = x' then Dot.Half_circle Dot.East
+            else Dot.Square in
+          add_PoI_int m (xc, y) priority level style ~adaptive:shape color) in
       Some m
     else if x < 0 && x' < 0 then Some m
     else None
@@ -160,8 +158,7 @@ let add_line m xy xy'
       else
         let draw m xy is_core adaptive_style =
           let draw style =
-            let shape = map_adaptive adaptive_style style in
-            add_PoI_int m xy priority level shape color in
+            add_PoI_int m xy priority level style ~adaptive:adaptive_style color in
           if is_core then draw style
           else
             match non_core_style with
@@ -192,8 +189,7 @@ let add_line m xy xy'
     in
     (* Drawing as a dot the extremities. *)
     let draw_extremes m xy =
-      let shape = map_adaptive Dot.Round style in
-      add_PoI_int m xy priority level shape color in
+      add_PoI_int m xy priority level style color in
     let start_xy =
       let xy =
         if x < 0. then (0., y_at 0)
@@ -232,12 +228,12 @@ let add_polygon m xyl
         let max_x = Float.to_int max_x + 1 in
         let min_y = Float.to_int min_y in
         let max_y = Float.to_int max_y + 1 in
-        let inner_shape = map_adaptive Dot.Square inner_style in
         fold_within_x m min_x max_x (fun m x ->
           fold_within_y m min_y max_y (fun m y ->
             let is_in = (* TODO *) false in
             if is_in then
-              add_PoI_int m (x, y) inner_priority inner_level inner_shape inner_color
+              add_PoI_int m (x, y) inner_priority inner_level inner_style
+                ~adaptive:Dot.Square inner_color
           else m)) in
   (* Draw border *)
   let line m xy1 xy2 =
