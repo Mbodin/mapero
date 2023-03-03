@@ -7,11 +7,13 @@ let display_map query_function map_object map_info =
   (* TODO *)
   Lwt.return ()
 
+let draw canvas = () (* TODO *)
+
 let _ =
   (* The default information about the map. *)
   let map_info = ref (* TODO: bbox, zoom level, etc. *)() in
   (* Preparing the interface. *)
-  let canvas = Canvas.init () in
+  let canvas = Canvas.init draw in
   (* The DOM object in which the map should be displayed. *)
   let map_object = (* TODO *)() in
   (* Building an Overpass query, as a function of the map_info. *)

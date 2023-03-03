@@ -27,7 +27,7 @@ dune build
 
 ## Cartography
 
-- Map of biomes: https://upload.wikimedia.org/wikipedia/commons/6/61/Biomes_of_the_world.svg CC-BY-SA, by Terpsichores.
+- Map of biomes: https://commons.wikimedia.org/wiki/File:Biomes_of_the_world.svg CC-BY-SA, by Terpsichores.
 - OpenStreetMap data: https://www.openstreetmap.org/copyright/ ODbL, OpenStreetMap contributors.
 - Overpass turbo: https://overpass-turbo.eu/
 
