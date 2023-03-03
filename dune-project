@@ -1,4 +1,4 @@
-(lang dune 2.0)
+(lang dune 2.7)
 
 (package
 	(name mapero)
@@ -6,4 +6,6 @@
 	(license AGPL-3.0-or-later)
 	(maintainers "Martin Constantino–Bodin <martin.bodin@ens-lyon.org>")
 	(source (github Mbodin/mapero)))
+
+(generate_opam_files true)
 

@@ -81,20 +81,29 @@ let init on_change =
     levels = ref IMap.empty ;
     size = xy
   } in
-  (* Creating a level 0. *)
+  (* Adding basic styles *)
+  let style = document##createElement (Js.string "style") in
+  let styles =
+    let styles = "text { font-family: \"Noto\", sans-serif; font-weight: bold; }" in
+    document##createTextNode (Js.string styles) in
+  Dom.appendChild style styles ;
+  Dom.appendChild r.svg style ;
+  (* Creating a level 0 *)
   let g = document##createElement (Js.string "g") in
+  set_attributes g [("id", Js.string "level-0")] ;
   Dom.appendChild r.svg g ;
   r.levels := IMap.add 0 g !(r.levels) ;
-  window##.onresize := Dom_html.handler (fun _ ->
-      update_xy () ;
-      let to_string i = Js.string (string_of_int i) in
-      set_attributes r.svg [
-          ("width", to_string (window_x ())) ;
-          ("height", to_string (window_y ()))
-        ] ;
-      on_change r ;
-      Js._true
-    ) ;
+  let on_change _ =
+    update_xy () ;
+    let to_string i = Js.string (string_of_int i) in
+    set_attributes r.svg [
+        ("width", to_string (window_x ())) ;
+        ("height", to_string (window_y ()))
+      ] ;
+    on_change r ;
+    Js._true in
+  window##.onresize := Dom_html.handler on_change ;
+  ignore (on_change ()) ;
   r
 
 let clear canvas =
@@ -129,6 +138,7 @@ let get canvas (x, y) level =
           | None ->
             ignore (aux (level - 1)) ;
             let g = document##createElement (Js.string "g") in
+            set_attributes g [("id", Js.string (Printf.sprintf "level-%d" level))] ;
             Dom.insertBefore canvas.svg g Js.Opt.empty ;
             canvas.levels := IMap.add level g !(canvas.levels) ;
             g in

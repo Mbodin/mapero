@@ -11,10 +11,10 @@
 		"clean": "rm -R _build",
 		"test": "dune runtest",
 		"doc": "dune build @doc",
-		"server": "python -m SimpleHTTPServer"
+		"server": "./server.sh"
 	},
 	"dependencies": {
-		"@opam/dune": ">=2.0",
+		"@opam/dune": ">=2.7",
 		"@opam/lwt_ppx": "*",
 		"@opam/js_of_ocaml": "~4.1",
 		"@opam/js_of_ocaml-lwt": "*",
