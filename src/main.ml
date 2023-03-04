@@ -7,7 +7,16 @@ let display_map query_function map_object map_info =
   (* TODO *)
   Lwt.return ()
 
-let draw canvas = () (* TODO *)
+let draw canvas =
+  let open Canvas in
+  clear canvas ;
+  for_all_visible (fun xy ->
+      let g0 = get canvas xy 0 in
+      let g1 = get canvas xy 1 in
+      draw_rectangle g0 Dot.Lavender ;
+      ()
+    ) canvas ;
+  () (* TODO *)
 
 let _ =
   (* The default information about the map. *)

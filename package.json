@@ -8,7 +8,7 @@
 		"buildsInSource": "_build"
 	},
 	"scripts": {
-		"clean": "rm -R _build",
+		"clean": "rm -Rf _build",
 		"test": "dune runtest",
 		"doc": "dune build @doc",
 		"server": "./server.sh"

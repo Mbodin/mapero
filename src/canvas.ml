@@ -42,12 +42,24 @@ type t = {
   svg : Dom_html.element Js.t ; (* The main svg element. *)
   groups : g I3Map.t ref ; (* All the groups, indexed by ((x, y), level). *)
   levels : g IMap.t ref ; (* A group for each level. *)
-  size : (int * int) ref (* The current size of the whole canvas. *)
+  size : (int * int) ref (* The current size of the whole canvas. *) ;
+  min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
 }
+(* Important note: the cell (0, 0) is the center for the perspective, not the minimum cell.
+  The minimum cell has negative coordinates. *)
 
 
-let for_all f canvas =
+let for_all_used f canvas =
   I3Map.iter (fun ((x, y), level) _ -> f (x, y) level) !(canvas.groups)
+
+let for_all_visible f canvas =
+  let (min_x, min_y) = !(canvas.min_coord) in
+  let (s_x, s_y) = !(canvas.size) in
+  for x = 0 to s_x do
+    for y = 0 to s_y do
+      f (min_x + x, min_y + y)
+    done
+  done
 
 
 let init_svg () =
@@ -56,7 +68,6 @@ let init_svg () =
       (* No map found: creating one. *)
       let svg = document##createElement (Js.string "svg") in
       set_attributes svg [
-          ("version", Js.string "1.1") ;
           ("width", Js.string "100%") ;
           ("height", Js.string "100%") ;
           ("xmlns", Js.string "http://www.w3.org/2000/svg") ;
@@ -71,15 +82,21 @@ let window_x, window_y =
 
 let init on_change =
   let xy = ref (0, 0) in
+  let min_coord = ref (0, 0) in
   let update_xy () =
     let round_to_stud v =
       v / pixel_stud + if v mod pixel_stud = 0 then 0 else 1 in
-    xy := (round_to_stud (window_x ()), round_to_stud (window_y ())) in
+    let x, y = round_to_stud (window_x ()), round_to_stud (window_y ()) in
+    xy := (x, y) ;
+    let compute_min v =
+      -v/2 - if v mod 2 = 0 then 0 else 1 in
+    min_coord := (compute_min x, compute_min y) in
   let r = {
     svg = init_svg () ;
     groups = ref I3Map.empty ;
     levels = ref IMap.empty ;
-    size = xy
+    size = xy ;
+    min_coord = min_coord
   } in
   (* Adding basic styles *)
   let style = document##createElement (Js.string "style") in
@@ -95,10 +112,13 @@ let init on_change =
   r.levels := IMap.add 0 g !(r.levels) ;
   let on_change _ =
     update_xy () ;
-    let to_string i = Js.string (string_of_int i) in
+    let (min_coord_x, min_coord_y) = !(r.min_coord) in
+    let (size_x, size_y) = !(r.size) in
     set_attributes r.svg [
-        ("width", to_string (window_x ())) ;
-        ("height", to_string (window_y ()))
+        ("viewBox", Js.string
+           (String.concat " "
+             (List.map (fun v -> string_of_int (v * pixel_stud))
+                [min_coord_x; min_coord_y; size_x; size_y])))
       ] ;
     on_change r ;
     Js._true in
@@ -119,14 +139,14 @@ let get canvas (x, y) level =
       let g = document##createElement (Js.string "g") in
       let compute_d v =
         let v = Float.of_int v in
-        (* sin (arctan v) = 1 / sqrt (1 + v^2)
+        (* sin (arctan x) = x / sqrt (1 + x^2)
           It represents the shift due to perspective. *)
-        let sin_arctan v = 1. /. sqrt (1. +. v *. v) in
+        let sin_arctan v = v /. sqrt (1. +. v *. v) in
         v *. Float.of_int pixel_stud +. sin_arctan v *. Float.of_int pixel_stud_height in
       let dx = compute_d x in
       let dy = compute_d y in
       set_attributes g [
-          ("transform", Js.string (Printf.sprintf "translate(%f, %f)" dx dy))
+          ("transform", Js.string (Printf.sprintf "translate(%g, %g)" dx dy))
         ];
       (* We can't add it directly to the svg element or it might superimpose to a level above.
         To avoid that, we have to add it in the right level. *)
@@ -149,15 +169,37 @@ let get canvas (x, y) level =
     g
 
 
-(* TODO
-      let rect = document##createElement (Js.string "rect") in
-      set_attributes rect [
-          ("x", convert 0) ;
-          ("y", convert 0) ;
-          ("with", convert pixel_stud) ;
-          ("height", convert pixel_stud) ;
-          ("style", Js.string "fill:rgb(0,0,0)") (* TODO: which color? *)
-        ];
-*)
+(* TODO: Deal with rotation, letters, transparency. *)
+
+let draw_rectangle g ?(proportion=1.) ?(rotation=0.) color =
+  let rect = document##createElement (Js.string "rect") in
+  let convert v = Js.string (Printf.sprintf "%g" (v *. proportion)) in
+  let pixel_stud = Float.of_int pixel_stud in
+  let style =
+    let (r, g, b) = Color.to_rgb color in
+    Printf.sprintf "fill:rgb(%d,%d,%d)" r g b in
+  set_attributes rect [
+      ("x", convert (-. pixel_stud /. 2.)) ;
+      ("y", convert (-. pixel_stud /. 2.)) ;
+      ("width", convert pixel_stud) ;
+      ("height", convert pixel_stud) ;
+      ("style", Js.string style)
+    ] ;
+  Dom.appendChild g rect
+
+let draw_circle g proportion ?(rotation=0.) color =
+  let circ = document##createElement (Js.string "circle") in
+  let convert v = Js.string (Printf.sprintf "%g" (v *. proportion)) in
+  let pixel_stud = Float.of_int pixel_stud in
+  let style =
+    let (r, g, b) = Color.to_rgb color in
+    Printf.sprintf "fill:rgb(%d,%d,%d)" r g b in
+  set_attributes circ [
+      ("cx", convert 0.) ;
+      ("cy", convert 0.) ;
+      ("r", convert pixel_stud) ;
+      ("style", Js.string style)
+    ] ;
+  Dom.appendChild g circ
 
 
