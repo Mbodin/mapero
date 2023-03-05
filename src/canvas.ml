@@ -15,6 +15,9 @@ let pixel_stud_height = pixel_stud / 5
 let window = Dom_html.window
 let document = window##.document
 
+let createSVGElement kind =
+  document##createElementNS (Js.string "http://www.w3.org/2000/svg") (Js.string kind)
+
 let set_attributes elem l =
   List.iter (fun (key, value) ->
     ignore (elem##setAttribute (Js.string key) value)) l
@@ -66,7 +69,7 @@ let init_svg () =
   let id = Js.string "map" in
   Js.Opt.get (Dom_html.document##getElementById id) (fun () ->
       (* No map found: creating one. *)
-      let svg = document##createElement (Js.string "svg") in
+      let svg = createSVGElement "svg" in
       set_attributes svg [
           ("width", Js.string "100%") ;
           ("height", Js.string "100%") ;
@@ -99,7 +102,7 @@ let init on_change =
     min_coord = min_coord
   } in
   (* Creating a level 0 *)
-  let g = document##createElement (Js.string "g") in
+  let g = createSVGElement "g" in
   set_attributes g [("id", Js.string "level-0")] ;
   Dom.appendChild r.svg g ;
   r.levels := IMap.add 0 g !(r.levels) ;
@@ -132,7 +135,7 @@ let get canvas (x, y) level =
   | Some g -> g
   | None ->
     let g =
-      let g = document##createElement (Js.string "g") in
+      let g = createSVGElement "g" in
       let compute_d v =
         let v = Float.of_int v in
         (* sin (arctan x) = x / sqrt (1 + x^2)
@@ -153,7 +156,7 @@ let get canvas (x, y) level =
           | Some g -> g
           | None ->
             ignore (aux (level - 1)) ;
-            let g = document##createElement (Js.string "g") in
+            let g = createSVGElement "g" in
             set_attributes g [("id", Js.string (Printf.sprintf "level-%d" level))] ;
             Dom.insertBefore canvas.svg g Js.Opt.empty ;
             canvas.levels := IMap.add level g !(canvas.levels) ;
@@ -168,7 +171,7 @@ let get canvas (x, y) level =
 (* TODO: Deal with rotation, letters, transparency. *)
 
 let draw_rectangle g ?(proportion=1.) ?(rotation=0.) color =
-  let rect = document##createElement (Js.string "rect") in
+  let rect = createSVGElement "rect" in
   let convert v = Js.string (Printf.sprintf "%g" (v *. proportion)) in
   let pixel_stud = Float.of_int pixel_stud in
   let style =
@@ -184,7 +187,7 @@ let draw_rectangle g ?(proportion=1.) ?(rotation=0.) color =
   Dom.appendChild g rect
 
 let draw_circle g proportion ?(rotation=0.) color =
-  let circ = document##createElement (Js.string "circle") in
+  let circ = createSVGElement "circle" in
   let convert v = Js.string (Printf.sprintf "%g" (v *. proportion)) in
   let pixel_stud = Float.of_int pixel_stud in
   let style =
