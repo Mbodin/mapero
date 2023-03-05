@@ -4,7 +4,7 @@ open Js_of_ocaml_lwt
 
 
 (* Size in pixel of a single LEGO cell. *)
-let pixel_stud = 10
+let pixel_stud = 60
 
 (* Height in pixel of a stud. *)
 let pixel_stud_height = pixel_stud / 5
@@ -98,13 +98,6 @@ let init on_change =
     size = xy ;
     min_coord = min_coord
   } in
-  (* Adding basic styles *)
-  let style = document##createElement (Js.string "style") in
-  let styles =
-    let styles = "text { font-family: \"Noto\", sans-serif; font-weight: bold; }" in
-    document##createTextNode (Js.string styles) in
-  Dom.appendChild style styles ;
-  Dom.appendChild r.svg style ;
   (* Creating a level 0 *)
   let g = document##createElement (Js.string "g") in
   set_attributes g [("id", Js.string "level-0")] ;
@@ -114,11 +107,14 @@ let init on_change =
     update_xy () ;
     let (min_coord_x, min_coord_y) = !(r.min_coord) in
     let (size_x, size_y) = !(r.size) in
+    let convert_min v = v * pixel_stud - pixel_stud / 2 in
+    let convert_size v = v * pixel_stud in
     set_attributes r.svg [
         ("viewBox", Js.string
            (String.concat " "
-             (List.map (fun v -> string_of_int (v * pixel_stud))
-                [min_coord_x; min_coord_y; size_x; size_y])))
+             (List.map string_of_int
+                [convert_min min_coord_x; convert_min min_coord_y;
+                 convert_size size_x; convert_size size_y])))
       ] ;
     on_change r ;
     Js._true in
