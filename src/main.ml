@@ -10,10 +10,10 @@ let display_map query_function map_object map_info =
 let draw canvas =
   let open Canvas in
   clear canvas ;
-  for_all_visible (fun xy ->
-      let g0 = get canvas xy 0 in
-      let g1 = get canvas xy 1 in
-      draw_rectangle g0 Dot.Lavender ;
+  iter (fun xy ->
+      draw_rectangle canvas xy 0 Dot.Lavender ;
+      draw_circle canvas xy 0 ~proportion:0.5 Dot.Black ;
+      draw_circle canvas xy 1 ~proportion:0.5 Dot.Lavender ;
       ()
     ) canvas ;
   () (* TODO *)

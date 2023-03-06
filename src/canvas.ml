@@ -4,10 +4,14 @@ open Js_of_ocaml_lwt
 
 
 (* Size in pixel of a single LEGO cell. *)
-let pixel_stud = 60
+let pixel_stud = 30
 
 (* Height in pixel of a stud. *)
 let pixel_stud_height = pixel_stud / 5
+
+(* Approximate distance between the screen and the user, in pixel.
+  The value may be underestimated to exagerate on the effect. *)
+let distance_to_user = 300
 
 
 (* Some generic DOM functions *)
@@ -30,32 +34,23 @@ let rec clear_node n =
   | None -> ()
 
 
-type g = Dom_html.element Js.t
 
+type node = Dom_html.element Js.t
 
-module Open = struct
-open Structures
-module IMap = Map.Make (IntOrder)
-module I3Map =
-  Map.Make (ProductOrderedType (ProductOrderedType (IntOrder) (IntOrder)) (IntOrder))
-end
-open Open
+module IMap = Map.Make (Structures.IntOrder)
 
 type t = {
-  svg : Dom_html.element Js.t ; (* The main svg element. *)
-  groups : g I3Map.t ref ; (* All the groups, indexed by ((x, y), level). *)
-  levels : g IMap.t ref ; (* A group for each level. *)
+  svg : node ; (* The main svg element. *)
+  levels : node IMap.t ref ; (* A group for each level. *)
   size : (int * int) ref (* The current size of the whole canvas. *) ;
   min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
 }
-(* Important note: the cell (0, 0) is the center for the perspective, not the minimum cell.
+(* Note that the cell (0, 0) is the center for the perspective, not the minimum cell.
   The minimum cell has negative coordinates. *)
+(* The level of the top of a stud is 1, a usual LEGO brick without stud is 6, a usual tile is 2. *)
 
 
-let for_all_used f canvas =
-  I3Map.iter (fun ((x, y), level) _ -> f (x, y) level) !(canvas.groups)
-
-let for_all_visible f canvas =
+let iter f canvas =
   let (min_x, min_y) = !(canvas.min_coord) in
   let (s_x, s_y) = !(canvas.size) in
   for x = 0 to s_x do
@@ -96,7 +91,6 @@ let init on_change =
     min_coord := (compute_min x, compute_min y) in
   let r = {
     svg = init_svg () ;
-    groups = ref I3Map.empty ;
     levels = ref IMap.empty ;
     size = xy ;
     min_coord = min_coord
@@ -110,14 +104,13 @@ let init on_change =
     update_xy () ;
     let (min_coord_x, min_coord_y) = !(r.min_coord) in
     let (size_x, size_y) = !(r.size) in
-    let convert_min v = v * pixel_stud - pixel_stud / 2 in
-    let convert_size v = v * pixel_stud in
+    let convert v = v * pixel_stud in
     set_attributes r.svg [
         ("viewBox", Js.string
            (String.concat " "
-             (List.map string_of_int
-                [convert_min min_coord_x; convert_min min_coord_y;
-                 convert_size size_x; convert_size size_y])))
+             (List.map (fun v -> string_of_int (convert v))
+                [min_coord_x; min_coord_y;
+                 size_x; size_y])))
       ] ;
     on_change r ;
     Js._true in
@@ -126,79 +119,100 @@ let init on_change =
   r
 
 let clear canvas =
-  I3Map.iter (fun ((_x, _y), _level) node -> clear_node node) !(canvas.groups)
+  IMap.iter (fun _level node -> clear_node node) !(canvas.levels)
 
 
-let get canvas (x, y) level =
-  let key = ((x, y), level) in
-  match I3Map.find_opt key !(canvas.groups) with
-  | Some g -> g
-  | None ->
-    let g =
+(* Fetch the group corresponding to the given level. *)
+let get_level canvas level =
+  let rec aux level =
+    assert (level >= 0) ;
+    match IMap.find_opt level !(canvas.levels) with
+    | Some g -> g
+    | None ->
+      (* Creating all previous levels and adding them before the current level. *)
+      ignore (aux (level - 1)) ;
+      (* Adding the current level. *)
       let g = createSVGElement "g" in
-      let compute_d v =
-        let v = Float.of_int v in
+      set_attributes g [("id", Js.string (Printf.sprintf "level-%d" level))] ;
+      Dom.insertBefore canvas.svg g Js.Opt.empty ;
+      canvas.levels := IMap.add level g !(canvas.levels) ;
+      g in
+  aux level
+
+(* Get the coordinates on screen of the given coordinate at the given level.
+  Because of perspective, they can be shifted. *)
+let get_perspective =
+  let pixel_stud = Float.of_int pixel_stud in
+  let pixel_stud_height = Float.of_int pixel_stud_height in
+  let distance_to_user = Float.of_int distance_to_user in
+  let perspective_shift =
+    let perspective_shift_memoise = ref IMap.empty in
+    fun v ->
+      match IMap.find_opt v !perspective_shift_memoise with
+      | Some r -> r
+      | None ->
         (* sin (arctan x) = x / sqrt (1 + x^2)
           It represents the shift due to perspective. *)
         let sin_arctan v = v /. sqrt (1. +. v *. v) in
-        v *. Float.of_int pixel_stud +. sin_arctan v *. Float.of_int pixel_stud_height in
-      let dx = compute_d x in
-      let dy = compute_d y in
-      set_attributes g [
-          ("transform", Js.string (Printf.sprintf "translate(%g, %g)" dx dy))
-        ];
-      (* We can't add it directly to the svg element or it might superimpose to a level above.
-        To avoid that, we have to add it in the right level. *)
-      let level =
-        let rec aux level =
-          assert (level >= 0) ;
-          match IMap.find_opt level !(canvas.levels) with
-          | Some g -> g
-          | None ->
-            ignore (aux (level - 1)) ;
-            let g = createSVGElement "g" in
-            set_attributes g [("id", Js.string (Printf.sprintf "level-%d" level))] ;
-            Dom.insertBefore canvas.svg g Js.Opt.empty ;
-            canvas.levels := IMap.add level g !(canvas.levels) ;
-            g in
-        aux level in
-      Dom.appendChild level g ;
-      g in
-    canvas.groups := I3Map.add key g !(canvas.groups) ;
-    g
+        let r =
+          let v = Float.of_int v in
+          sin_arctan (v /. distance_to_user) *. pixel_stud_height in
+        perspective_shift_memoise := IMap.add v r !perspective_shift_memoise ;
+        r in
+  fun (x, y) level ->
+    let compute v =
+      let shift = perspective_shift v in
+      let v = Float.of_int v in
+      v *. pixel_stud +. shift *. Float.of_int level in
+    (compute x, compute y)
 
 
-(* TODO: Deal with rotation, letters, transparency. *)
 
-let draw_rectangle g ?(proportion=1.) ?(rotation=0.) color =
+(* TODO: Deal with letters, transparency, darken. *)
+
+let draw_rectangle canvas (x, y) level
+    ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
+  let (dx, dy) = size in
+  let x', y' = x + dx, y + dy in
+  let (coordx, coordy) = get_perspective (x, y) level in
+  let (coordx', coordy') = get_perspective (x', y') level in
   let rect = createSVGElement "rect" in
-  let convert v = Js.string (Printf.sprintf "%g" (v *. proportion)) in
   let pixel_stud = Float.of_int pixel_stud in
+  let convert v = Js.string (Printf.sprintf "%g" v) in
+  let delta = (1. -. proportion) *. pixel_stud in
   let style =
     let (r, g, b) = Color.to_rgb color in
     Printf.sprintf "fill:rgb(%d,%d,%d)" r g b in
   set_attributes rect [
-      ("x", convert (-. pixel_stud /. 2.)) ;
-      ("y", convert (-. pixel_stud /. 2.)) ;
-      ("width", convert pixel_stud) ;
-      ("height", convert pixel_stud) ;
+      ("x", convert (coordx +. delta)) ;
+      ("y", convert (coordy +. delta)) ;
+      ("width", convert ((coordx' -. coordx) *. proportion)) ;
+      ("height", convert ((coordy' -. coordy) *. proportion)) ;
+      ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
       ("style", Js.string style)
     ] ;
-  Dom.appendChild g rect
+  Dom.appendChild (get_level canvas level) rect
 
-let draw_circle g proportion ?(rotation=0.) color =
-  let circ = createSVGElement "circle" in
-  let convert v = Js.string (Printf.sprintf "%g" (v *. proportion)) in
+(* TODO: Factorise *)
+let draw_circle canvas (x, y) level
+    ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
+  let x', y' = x + diameter, y + diameter in
+  let (coordx, coordy) = get_perspective (x, y) level in
+  let (coordx', coordy') = get_perspective (x', y') level in
+  let rect = createSVGElement "circle" in
   let pixel_stud = Float.of_int pixel_stud in
+  let convert v = Js.string (Printf.sprintf "%g" v) in
+  let radius = pixel_stud *. Float.of_int diameter /. 2. in
   let style =
     let (r, g, b) = Color.to_rgb color in
     Printf.sprintf "fill:rgb(%d,%d,%d)" r g b in
-  set_attributes circ [
-      ("cx", convert 0.) ;
-      ("cy", convert 0.) ;
-      ("r", convert pixel_stud) ;
+  set_attributes rect [
+      ("cx", convert ((coordx +. coordx') /. 2.)) ;
+      ("cy", convert ((coordy +. coordy') /. 2.)) ;
+      ("r", convert (radius *. proportion)) ;
+      ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
       ("style", Js.string style)
     ] ;
-  Dom.appendChild g circ
+  Dom.appendChild (get_level canvas level) rect
 
 
