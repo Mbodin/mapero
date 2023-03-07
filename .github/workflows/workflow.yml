@@ -30,8 +30,11 @@ jobs:
       - name: Compiling the project
         run: esy
 
+      - name: Some tests
+        run: tree || ls -aR
+
       - name: Deploying artifact.
         uses: actions/upload-pages-artifact@v1
         with:
-          path: $GITHUB_WORKSPACE/_build/default/web
+          path: _build/default/web
   
