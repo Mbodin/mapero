@@ -27,14 +27,14 @@ dune build
 
 ## Cartography
 
-- Map of biomes: https://commons.wikimedia.org/wiki/File:Biomes_of_the_world.svg CC-BY-SA, by Terpsichores.
-- OpenStreetMap data: https://www.openstreetmap.org/copyright/ ODbL, OpenStreetMap contributors.
-- Overpass turbo: https://overpass-turbo.eu/
+- Map of biomes: <https://commons.wikimedia.org/wiki/File:Biomes_of_the_world.svg> CC-BY-SA, by Terpsichores.
+- OpenStreetMap data: <https://www.openstreetmap.org/copyright/> ODbL, OpenStreetMap contributors.
+- Overpass turbo: <https://overpass-turbo.eu/>
 
 ## Design
 
-- LEGO Dots: https://www.lego.com/fr-fr/themes/dots
-- Color names and values, based on BrickLink: https://www.bricklink.com/catalogList.asp?catType=P&catString=117
+- LEGO Dots: <https://www.lego.com/fr-fr/themes/dots>
+- Color names and values, based on BrickLink: <https://www.bricklink.com/catalogList.asp?catType=P&catString=117>
 
 # Licences
 
