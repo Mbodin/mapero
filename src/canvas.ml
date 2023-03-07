@@ -95,6 +95,20 @@ let init on_change =
     size = xy ;
     min_coord = min_coord
   } in
+  (* Adding basic styles *)
+  let style =
+    let style = createSVGElement "style" in
+    let styles =
+      let content =
+        String.concat "\n\t" [
+          "* { transform-origin: center; transform-box: fill-box; }" ;
+          "text { font-family: \"Noto\", sans-serif; font-weight: bold;"
+          ^ "text-anchor: middle; dominant-baseline: middle; }"
+        ] in
+      document##createTextNode (Js.string content) in
+    Dom.appendChild style styles ;
+    style in
+  Dom.appendChild r.svg style ;
   (* Creating a level 0 *)
   let g = createSVGElement "g" in
   set_attributes g [("id", Js.string "level-0")] ;
@@ -167,52 +181,74 @@ let get_perspective =
     (compute x, compute y)
 
 
+let pixel_stud = Float.of_int pixel_stud
 
-(* TODO: Deal with letters, transparency, darken. *)
+let print_float v = Js.string (Printf.sprintf "%g" v)
+
+(* Prepare the drawing coordinates and colors. *)
+let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false) color build_nodes =
+  let (dx, dy) = size in
+  let x', y' = x + dx, y + dy in
+  let coord = get_perspective (x, y) level in
+  let coord' = get_perspective (x', y') level in
+  let style =
+    let (r, g, b) = Color.to_rgb color in
+    let (r, g, b) =
+      if darken then (r / 2, g / 2, b / 2) else (r, g, b) in
+    Printf.sprintf "fill:rgb(%d,%d,%d);" r g b in
+  let style =
+    if Color.is_transparent color then
+      style ^ "fill-opacity:.5;"
+    else style in
+  let l = build_nodes coord coord' style in
+  let level = get_level canvas level in
+  List.iter (Dom.appendChild level) l ;
+  (* Dealing with special cases. *)
+  match color with
+  | Letter c ->
+    let element = createSVGElement "text" in
+    let (coordx, coordy) = coord in
+    let (coordx', coordy') = coord' in
+    set_attributes element [
+        ("x", print_float ((coordx +. coordx') /. 2.)) ;
+        ("y", print_float ((coordy +. coordy') /. 2.)) ;
+        ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation))
+      ] ;
+    let text = document##createTextNode (Js.string c) in
+    Dom.appendChild element text ;
+    Dom.appendChild level element
+  | _ -> ()
 
 let draw_rectangle canvas (x, y) level
     ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  let (dx, dy) = size in
-  let x', y' = x + dx, y + dy in
-  let (coordx, coordy) = get_perspective (x, y) level in
-  let (coordx', coordy') = get_perspective (x', y') level in
-  let rect = createSVGElement "rect" in
-  let pixel_stud = Float.of_int pixel_stud in
-  let convert v = Js.string (Printf.sprintf "%g" v) in
-  let delta = (1. -. proportion) *. pixel_stud in
-  let style =
-    let (r, g, b) = Color.to_rgb color in
-    Printf.sprintf "fill:rgb(%d,%d,%d)" r g b in
-  set_attributes rect [
-      ("x", convert (coordx +. delta)) ;
-      ("y", convert (coordy +. delta)) ;
-      ("width", convert ((coordx' -. coordx) *. proportion)) ;
-      ("height", convert ((coordy' -. coordy) *. proportion)) ;
-      ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
-      ("style", Js.string style)
-    ] ;
-  Dom.appendChild (get_level canvas level) rect
+  draw_figure canvas (x, y) level ~size ~rotation ~darken color
+    (fun (coordx, coordy) (coordx', coordy') style ->
+      let rect = createSVGElement "rect" in
+      let delta = (1. -. proportion) *. pixel_stud in
+      set_attributes rect [
+          ("x", print_float (coordx +. delta)) ;
+          ("y", print_float (coordy +. delta)) ;
+          ("width", print_float ((coordx' -. coordx) *. proportion)) ;
+          ("height", print_float ((coordy' -. coordy) *. proportion)) ;
+          ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
+          ("style", Js.string style)
+        ] ;
+      [rect]
+    )
 
-(* TODO: Factorise *)
 let draw_circle canvas (x, y) level
     ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  let x', y' = x + diameter, y + diameter in
-  let (coordx, coordy) = get_perspective (x, y) level in
-  let (coordx', coordy') = get_perspective (x', y') level in
-  let rect = createSVGElement "circle" in
-  let pixel_stud = Float.of_int pixel_stud in
-  let convert v = Js.string (Printf.sprintf "%g" v) in
-  let radius = pixel_stud *. Float.of_int diameter /. 2. in
-  let style =
-    let (r, g, b) = Color.to_rgb color in
-    Printf.sprintf "fill:rgb(%d,%d,%d)" r g b in
-  set_attributes rect [
-      ("cx", convert ((coordx +. coordx') /. 2.)) ;
-      ("cy", convert ((coordy +. coordy') /. 2.)) ;
-      ("r", convert (radius *. proportion)) ;
-      ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
-      ("style", Js.string style)
-    ] ;
-  Dom.appendChild (get_level canvas level) rect
-
+  draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~darken color
+    (fun (coordx, coordy) (coordx', coordy') style ->
+      let circle = createSVGElement "circle" in
+      let radius = pixel_stud *. Float.of_int diameter /. 2. in
+      set_attributes circle [
+          ("cx", print_float ((coordx +. coordx') /. 2.)) ;
+          ("cy", print_float ((coordy +. coordy') /. 2.)) ;
+          ("r", print_float (radius *. proportion)) ;
+          ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
+          ("style", Js.string style)
+        ] ;
+      [circle]
+    )
 

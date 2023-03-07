@@ -75,9 +75,10 @@ let is_letter c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 
 let add_text m (x, y) ?(only_letters = true)
     ?(priority = Structures.VeryHigh) ?(level = max_int) str =
+  (* TODO: Split according to Unicode characters, not just bytes. *)
   Seq.fold_lefti (fun m i c ->
       if only_letters && not (is_letter c) then m
-      else add_PoI_int m (x + i, y) priority level Round (Dot.Letter c)
+      else add_PoI_int m (x + i, y) priority level Round (Dot.Letter (Printf.sprintf "%c" c))
     ) m (String.to_seq str)
 
 

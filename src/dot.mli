@@ -26,7 +26,7 @@ type color =
   | Yellow
   | Yellowish_green
   | White
-  | Letter of char (* A special “color”, for letters. *)
+  | Letter of string (* A special “color”, for letters, encoded as a one character Unicode string. *)
 
 type direction =
   | North

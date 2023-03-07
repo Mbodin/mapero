@@ -12,7 +12,7 @@ let draw canvas =
   clear canvas ;
   iter (fun xy ->
       draw_rectangle canvas xy 0 Dot.Lavender ;
-      draw_circle canvas xy 0 ~proportion:0.5 Dot.Black ;
+      draw_circle canvas xy 0 ~proportion:0.5 ~darken:true Dot.Lavender ;
       draw_circle canvas xy 1 ~proportion:0.5 Dot.Lavender ;
       ()
     ) canvas ;

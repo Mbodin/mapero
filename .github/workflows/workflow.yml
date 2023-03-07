@@ -1,4 +1,4 @@
-name: esy CI
+name: CI and web deployment
 
 # Controls when the workflow will run
 on:
