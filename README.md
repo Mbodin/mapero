@@ -3,6 +3,9 @@
 
 This project aims to be an OSM renderer in a LEGO style.
 
+The project can be tried at <https://mbodin.github.io/mapero/>.
+Note that this webpage relies on Overpass turbo: it may suffer high charges at times and it is advised to be patient and come later if any problem arises.
+
 # Compiling
 
 The prefered source is using `esy`.

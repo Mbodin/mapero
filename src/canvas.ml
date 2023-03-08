@@ -7,11 +7,11 @@ open Js_of_ocaml_lwt
 let pixel_stud = 30
 
 (* Height in pixel of a stud. *)
-let pixel_stud_height = pixel_stud / 5
+let pixel_stud_height = pixel_stud / 4
 
 (* Approximate distance between the screen and the user, in pixel.
-  The value may be underestimated to exagerate on the effect. *)
-let distance_to_user = 300
+  The value may be underestimated to exagerate the effect. *)
+let distance_to_user = 200
 
 
 (* Some generic DOM functions *)
@@ -189,9 +189,28 @@ let get_perspective =
     (compute x, compute y)
 
 
+(* Basic drawing functions. *)
+module DrawBasic : sig
+
+(* Draw a rectangle filling the given cell and level.
+  The size argument enables it to fill that many cells.
+  If the proportion is less than 1., its borders will be shrinked by that many.
+  We can also specify a rotation in degrees.
+  Finally, the darken boolean can be specified to make the color darker. *)
+val draw_rectangle : t -> (int * int) -> int -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+
+(* Same, but for a circle. *)
+val draw_circle : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+
+end = struct
+
 let pixel_stud = Float.of_int pixel_stud
 
 let print_float v = Js.string (Printf.sprintf "%g" v)
+
+let transform_rotate = function
+  | 0. -> []
+  | rotation -> [("transform", Js.string (Printf.sprintf "rotate(%g)" rotation))]
 
 (* Prepare the drawing coordinates and colors. *)
 let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false) color build_nodes =
@@ -217,14 +236,16 @@ let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false
     let element = createSVGElement "text" in
     let (coordx, coordy) = coord in
     let (coordx', coordy') = coord' in
-    set_attributes element [
+    set_attributes element ([
         ("x", print_float ((coordx +. coordx') /. 2.)) ;
-        ("y", print_float ((coordy +. coordy') /. 2.)) ;
-        ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation))
-      ] ;
+        ("y", print_float ((coordy +. coordy') /. 2.))
+      ] @ transform_rotate rotation) ;
     let text = document##createTextNode (Js.string c) in
     Dom.appendChild element text ;
     Dom.appendChild level element
+  | Satin_trans_clear ->
+    (* TODO: Try to reproduce this effect. *)
+    ()
   | _ -> ()
 
 let draw_rectangle canvas (x, y) level
@@ -232,15 +253,14 @@ let draw_rectangle canvas (x, y) level
   draw_figure canvas (x, y) level ~size ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let rect = createSVGElement "rect" in
-      let delta = (1. -. proportion) *. pixel_stud in
-      set_attributes rect [
+      let delta = (1. -. proportion) *. pixel_stud /. 2. in
+      set_attributes rect ([
           ("x", print_float (coordx +. delta)) ;
           ("y", print_float (coordy +. delta)) ;
           ("width", print_float ((coordx' -. coordx) *. proportion)) ;
           ("height", print_float ((coordy' -. coordy) *. proportion)) ;
-          ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
           ("style", Js.string style)
-        ] ;
+        ] @ transform_rotate rotation) ;
       [rect]
     )
 
@@ -250,13 +270,59 @@ let draw_circle canvas (x, y) level
     (fun (coordx, coordy) (coordx', coordy') style ->
       let circle = createSVGElement "circle" in
       let radius = pixel_stud *. Float.of_int diameter /. 2. in
-      set_attributes circle [
+      set_attributes circle ([
           ("cx", print_float ((coordx +. coordx') /. 2.)) ;
           ("cy", print_float ((coordy +. coordy') /. 2.)) ;
           ("r", print_float (radius *. proportion)) ;
-          ("transform", Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
           ("style", Js.string style)
-        ] ;
+        ] @ transform_rotate rotation) ;
       [circle]
     )
+
+end
+
+(* Drawing LEGO pieces. *)
+module Lego = struct
+
+open DrawBasic
+
+module I2Map = Map.Make (Structures.ProductOrderedType (Structures.IntOrder) (Structures.IntOrder))
+
+(* A global map of small rotations, to be kept identical between two frames. *)
+let get_rotation =
+  let rotations = ref I2Map.empty in fun xy ->
+  match I2Map.find_opt xy !rotations with
+  | Some r -> r
+  | None ->
+    let r = (Random.float 10.) -. 5. in
+    rotations := I2Map.add xy r !rotations ;
+    r
+
+(* We only rotate dots. *)
+let get_rotation_size xy size =
+  if size = (1, 1) then get_rotation xy
+  else 0.
+
+(* TODO: Set up the proportions to match LEGo's. *)
+
+let base_plate canvas xy ?(size=(1, 1)) color =
+  (* Stud proportion. *)
+  let proportion = 0.5 in
+  draw_rectangle canvas xy 0 ~size color ;
+  draw_circle canvas xy 0 ~proportion ~darken:true color ;
+  draw_circle canvas xy 1 ~proportion color
+
+let square_tile canvas xy ?(level=2) ?(size=(1, 1)) color =
+  let rotation = get_rotation_size xy size in
+  let proportion = 0.9 in
+  draw_rectangle canvas xy (level - 2) ~size ~proportion ~rotation ~darken:true color ;
+  draw_rectangle canvas xy level ~size ~proportion ~rotation color
+
+let round_tile canvas xy ?(level=2) ?(diameter=1) color =
+  let rotation = get_rotation_size xy (diameter, diameter) in
+  let proportion = 0.9 in
+  draw_circle canvas xy (level - 2) ~diameter ~proportion ~rotation ~darken:true color ;
+  draw_circle canvas xy level ~diameter ~proportion ~rotation color
+
+end
 

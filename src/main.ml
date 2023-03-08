@@ -1,4 +1,6 @@
 
+let _ = Random.self_init ()
+
 let display_map query_function map_object map_info =
   let query = query_function map_info in
   (* Fetching and parsing the result of the query. *)
@@ -8,14 +10,18 @@ let display_map query_function map_object map_info =
   Lwt.return ()
 
 let draw canvas =
-  let open Canvas in
-  clear canvas ;
-  iter (fun xy ->
-      draw_rectangle canvas xy 0 Dot.Lavender ;
-      draw_circle canvas xy 0 ~proportion:0.5 ~darken:true Dot.Lavender ;
-      draw_circle canvas xy 1 ~proportion:0.5 Dot.Lavender ;
-      ()
+  let open Canvas.Lego in
+  Canvas.clear canvas ;
+  Canvas.iter (fun xy ->
+      base_plate canvas xy Dot.White
     ) canvas ;
+  (* Some tests. *)
+  List.iteri (fun i c ->
+      square_tile canvas (i - 10, 1) c ;
+      round_tile canvas (i - 10, 2) c
+    ) Dot.[Black; White; Bright_green; Bright_light_blue; Coral; Dark_azure; Dark_turquoise;
+           Lavender; Trans_orange; Satin_trans_clear; Yellow;
+           Letter "T"; Letter "E"; Letter "S"; Letter "T"] ;
   () (* TODO *)
 
 let _ =

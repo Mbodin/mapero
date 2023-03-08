@@ -13,15 +13,16 @@ val iter : (int * int -> unit) -> t -> unit
 val clear : t -> unit
 
 
-(* Draw a rectangle filling the given cell and level.
-  The size argument enables it to fill that many cells.
-  If the proportion is less than 1., its borders will be shrinked by that many.
-  We can also specify a rotation in degrees.
-  Finally, the darken boolean can be specified to make the color darker. *)
-val draw_rectangle : t -> (int * int) -> int -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+module Lego : sig
 
-(* Same, but for a circle. *)
-val draw_circle : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+(* Draw a base plate at the given coordinates. *)
+val base_plate : t -> (int * int) -> ?size:(int * int) -> Dot.color -> unit
 
-(* TODO: draw shadow *)
+(* Draw a square tile at the given coordinates. *)
+val square_tile : t -> (int * int) -> ?level:int -> ?size:(int * int) -> Dot.color -> unit
+
+(* Draw a round tile at the given coordinates. *)
+val round_tile : t -> (int * int) -> ?level:int -> ?diameter:int -> Dot.color -> unit
+
+end
 
