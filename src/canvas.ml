@@ -87,7 +87,7 @@ let init on_change =
     let x, y = round_to_stud (window_x ()), round_to_stud (window_y ()) in
     xy := (x, y) ;
     let compute_min v =
-      -v/2 - if v mod 2 = 0 then 0 else 1 in
+      -v/2 - (v mod 2) in
     min_coord := (compute_min x, compute_min y) in
   let r = {
     svg = init_svg () ;
@@ -118,11 +118,19 @@ let init on_change =
     update_xy () ;
     let (min_coord_x, min_coord_y) = !(r.min_coord) in
     let (size_x, size_y) = !(r.size) in
-    let convert v = v * pixel_stud in
+    let (shift_coord_x, shift_coord_y) =
+      let shift w = pixel_stud - (w mod pixel_stud) in
+      (shift (window_x ()), shift (window_y ())) in
+    let convert v = string_of_int (v * pixel_stud) in
     set_attributes r.svg [
+        ("width", Js.string (convert size_x)) ;
+        ("height", Js.string (convert size_y)) ;
+        ("style", Js.string
+          (Printf.sprintf "position: absolute; left: -%dpx; top: -%dpx;"
+            shift_coord_x shift_coord_y)) ;
         ("viewBox", Js.string
            (String.concat " "
-             (List.map (fun v -> string_of_int (convert v))
+             (List.map convert
                 [min_coord_x; min_coord_y;
                  size_x; size_y])))
       ] ;
