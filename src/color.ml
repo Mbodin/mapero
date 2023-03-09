@@ -15,7 +15,7 @@ let to_rgb = function
   | Light_aqua -> (203, 255, 243)
   | Medium_azure -> (139, 231, 255)
   | Satin_trans_clear -> (152, 180, 191)
-  | Trans_orange -> (189, 74, 17)
+  | Trans_orange -> (223, 113, 28)
   | Yellow -> (255, 209, 2)
   | Yellowish_green -> (233, 250, 156)
   | White | Letter _ -> (247, 247, 245)

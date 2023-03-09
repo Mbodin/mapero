@@ -109,6 +109,26 @@ let init on_change =
     Dom.appendChild style styles ;
     style in
   Dom.appendChild r.svg style ;
+  (* Adding some filters *)
+  let defs =
+    let defs = createSVGElement "defs" in
+    let blur_light_moon = createSVGElement "filter" in
+    set_attributes blur_light_moon [
+      ("id", Js.string "blur_light_moon") ;
+      ("style", Js.string "color-interpolation-filters:sRGB") ;
+      ("x", Js.string "-0.1") ;
+      ("width", Js.string "1.5") ;
+      ("y", Js.string "-0.1") ;
+      ("height", Js.string "1.5")
+    ] ;
+    let blur = createSVGElement "feGaussianBlur" in
+    set_attributes blur [
+      ("stdDeviation", Js.string "0.5") ;
+    ] ;
+    Dom.appendChild blur_light_moon blur ;
+    Dom.appendChild defs blur_light_moon ;
+    defs in
+  Dom.appendChild r.svg defs ;
   (* Creating a level 0 *)
   let g = createSVGElement "g" in
   set_attributes g [("id", Js.string "level-0")] ;
@@ -346,8 +366,49 @@ let draw_half_circle canvas (x, y) level
 let draw_circle_shades canvas (x, y) level
     ?(diameter=1) ?(proportion=1.) ?(rotation=0.) color =
   draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~lighten:true color
-    (fun (coordx, coordy) (coordx', coordy') style ->
-       [] (* TODO *)
+    (fun (coordx, coordy) (coordx', coordy') _style ->
+      let style_blur = "fill:white; fill-opacity:.5; filter:url(#blur_light_moon);" in
+      let style_ext = "fill:white; fill-opacity:.5; filter:url(#blur_light_moon);" in
+      let delta = (1. -. proportion) *. pixel_stud /. 2. in
+      let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
+      let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
+      let middlex = (coordx +. coordx') /. 2. in
+      let middley = (coordy +. coordy') /. 2. in
+      let radius = pixel_stud *. proportion /. 2. in
+      let moon = createSVGElement "path" in
+      let path_d =
+        let larger_radius = radius *. 1.5 in
+        String.concat " " Printf.[
+            sprintf "M %g,%g" middlex coordy ;
+            sprintf "A %g,%g 0 0 1 %g,%g" radius radius coordx' middley ;
+            sprintf "A %g,%g 0 0 0 %g,%g" larger_radius larger_radius middlex coordy ;
+            "z"
+          ] in
+      set_attributes moon ([
+          ("d", Js.string path_d) ;
+          ("style", Js.string style_blur)
+        ] @ transform_rotate rotation) ;
+      let triangle = createSVGElement "path" in
+      let path_d =
+        let radiusa = radius *. 1.5 in
+        let radiusb = radius *. 2. in
+        let ext = radius *. 0.5 in
+        let ext_coordx = coordx -. ext in
+        let ext_coordy' = coordy' +. ext in
+        let pausex = middlex -. radius /. sqrt 2. in
+        let pausey = middley +. radius /. sqrt 2. in
+        String.concat " " Printf.[
+            sprintf "M %g,%g" ext_coordx middley ;
+            sprintf "A %g,%g 0 0 0 %g,%g" radiusa radiusa pausex pausey ;
+            sprintf "A %g,%g 0 0 0 %g,%g" radiusa radiusa middlex ext_coordy' ;
+            sprintf "A %g,%g 0 0 1 %g,%g" radiusb radiusb ext_coordx middley ;
+            "z"
+          ] in
+      set_attributes triangle ([
+          ("d", Js.string path_d) ;
+          ("style", Js.string style_ext)
+        ] @ transform_rotate rotation) ;
+      [moon; triangle]
     )
 
 end
@@ -376,27 +437,35 @@ let get_rotation_size ?(double_rotation=false) xy size =
     if double_rotation then 2. *. r else r
   else 0.
 
+let remove_letters = function
+  | Dot.Letter _ -> Dot.White
+  | c -> c
 
 let base_plate canvas xy ?(size=(1, 1)) color =
   (* Stud proportion. *)
   let proportion = 0.57 in
-  draw_rectangle canvas xy 0 ~size color ;
-  draw_circle canvas xy 0 ~proportion ~darken:true color ;
+  draw_rectangle canvas xy 0 ~size (remove_letters color) ;
+  draw_circle canvas xy 0 ~proportion ~darken:true (remove_letters color) ;
   draw_circle canvas xy 1 ~proportion color
 
 let square_tile canvas xy ?(level=2) ?(size=(1, 1)) color =
   let rotation = get_rotation_size xy size in
   let proportion = 0.95 in
-  draw_rectangle canvas xy (level - 2) ~size ~proportion ~rotation ~darken:true color ;
+  draw_rectangle canvas xy (level - 2) ~size ~proportion ~rotation ~darken:true
+    (remove_letters color) ;
   draw_rectangle canvas xy level ~size ~proportion ~rotation color
 
 let round_tile canvas xy ?(level=2) ?(diameter=1) color =
   let rotation = get_rotation_size ~double_rotation:true xy (diameter, diameter) in
   let proportion = 0.95 in
-  if Color.is_transparent color then
+  if Color.is_transparent color then (
     (* Adding special shades underneath the circle. *)
-    draw_circle_shades canvas xy (level - 1) ~diameter ~proportion ~rotation color ;
-  draw_circle canvas xy (level - 2) ~diameter ~proportion ~rotation ~darken:true color ;
+    let proportion = 0.57 in
+    (* Note that we dropped the rotation: the light is always coming from the same direction. *)
+    draw_circle_shades canvas xy (level - 1) ~diameter ~proportion color
+  ) ;
+  draw_circle canvas xy (level - 2) ~diameter ~proportion ~rotation ~darken:true
+    (remove_letters color) ;
   draw_circle canvas xy level ~diameter ~proportion ~rotation color
 
 let convert_direction = function
@@ -412,7 +481,8 @@ let quarter_tile canvas xy ?(level=2) direction color =
   let rotation = rotation +. convert_direction direction in
   let rotation = rotation +. 90. in (* The function draw_quarter is drawing it West by default. *)
   let proportion = 0.95 in
-  draw_quarter canvas xy (level - 2) ~proportion ~rotation ~darken:true color ;
+  draw_quarter canvas xy (level - 2) ~proportion ~rotation ~darken:true
+    (remove_letters color) ;
   draw_quarter canvas xy level ~proportion ~rotation color
 
 let half_circle_tile canvas xy ?(level=2) direction color =
@@ -421,7 +491,8 @@ let half_circle_tile canvas xy ?(level=2) direction color =
     get_rotation_size xy size in
   let rotation = rotation +. convert_direction direction in
   let proportion = 0.95 in
-  draw_half_circle canvas xy (level - 2) ~proportion ~rotation ~darken:true color ;
+  draw_half_circle canvas xy (level - 2) ~proportion ~rotation ~darken:true
+    (remove_letters color) ;
   draw_half_circle canvas xy level ~proportion ~rotation color
 
 end

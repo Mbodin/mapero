@@ -5,13 +5,51 @@
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    id="svg8"
    version="1.1"
    viewBox="0 0 103.99162 101.7883"
    height="101.7883mm"
-   width="103.99162mm">
+   width="103.99162mm"
+   sodipodi:docname="shade.svg"
+   inkscape:version="0.92.5 (2060ec1f9f, 2020-04-08)">
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1848"
+     inkscape:window-height="1016"
+     id="namedview9"
+     showgrid="false"
+     inkscape:zoom="1.7350885"
+     inkscape:cx="0.75177209"
+     inkscape:cy="160.73979"
+     inkscape:window-x="72"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g838" />
   <defs
-     id="defs2" />
+     id="defs2">
+    <filter
+       inkscape:collect="always"
+       style="color-interpolation-filters:sRGB"
+       id="filter863"
+       x="-0.11859906"
+       width="1.2371981"
+       y="-0.093673541"
+       height="1.1873471">
+      <feGaussianBlur
+         inkscape:collect="always"
+         stdDeviation="0.5"
+         id="feGaussianBlur865" />
+    </filter>
+  </defs>
   <metadata
      id="metadata5">
     <rdf:RDF>
@@ -20,21 +58,23 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
   <g
      transform="translate(-390.32196,-101.59551)"
-     id="layer1">
+     id="layer1"
+     style="fill:#ff8080">
     <g
-       id="g838">
+       id="g838"
+       style="fill:#ff8080">
       <path
-         style="fill:none;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         style="fill:#ff8080;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
          d="m 436.94048,203.2619 c -26.1429,-11.01754 -39.16619,-32.6793 -46.49108,-58.96428 5.94028,11.07827 13.93687,18.66589 27.21428,27.59226 5.32639,14.58969 8.90967,22.65611 19.2768,31.37202 z"
          id="path832" />
       <path
-         style="fill:none;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         style="fill:#55ddff;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;filter:url(#filter863)"
          d="m 446.07096,102.2832 c 39.44445,3.59634 45.72134,30.08296 46.5088,60.35807 0,0 6.4067,-29.93987 -6.40789,-47.1289 C 473.35728,98.323344 445.863,101.91926 446.07096,102.2832 Z"
          id="path834" />
     </g>
