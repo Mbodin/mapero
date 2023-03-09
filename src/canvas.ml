@@ -205,6 +205,12 @@ val draw_rectangle : t -> (int * int) -> int -> ?size:(int * int) -> ?proportion
 (* Same, but for a circle. *)
 val draw_circle : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
 
+(* Draw a quarter of a circle, with its angle at North-West. *)
+val draw_quarter : t -> (int * int) -> int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+
+(* Draw a shape like the LEGO half-circle of a circle, with its straight border Noth. *)
+val draw_half_circle : t -> (int * int) -> int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+
 (* Draw the shades that can be seen underneath a transparent circle tile. *)
 val draw_circle_shades : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> Dot.color -> unit
 
@@ -289,6 +295,54 @@ let draw_circle canvas (x, y) level
       [circle]
     )
 
+let draw_quarter canvas (x, y) level
+    ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
+  draw_figure canvas (x, y) level ~rotation ~darken color
+    (fun (coordx, coordy) (coordx', coordy') style ->
+      let delta = (1. -. proportion) *. pixel_stud /. 2. in
+      let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
+      let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
+      let radius = pixel_stud *. proportion in
+      let path = createSVGElement "path" in
+      let path_d =
+        String.concat " " Printf.[
+            sprintf "M %g,%g" coordx coordy ;
+            sprintf "L %g,%g" coordx' coordy ;
+            sprintf "A %g,%g 0 0 1 %g,%g" radius radius coordx coordy' ;
+            "z"
+          ] in
+      set_attributes path ([
+          ("d", Js.string path_d) ;
+          ("style", Js.string style)
+        ] @ transform_rotate rotation) ;
+      [path]
+    )
+
+let draw_half_circle canvas (x, y) level
+    ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
+  draw_figure canvas (x, y) level ~rotation ~darken color
+    (fun (coordx, coordy) (coordx', coordy') style ->
+      let delta = (1. -. proportion) *. pixel_stud /. 2. in
+      let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
+      let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
+      let middley = (coordy +. coordy') /. 2. in
+      let radius = pixel_stud *. proportion /. 2. in
+      let path = createSVGElement "path" in
+      let path_d =
+        String.concat " " Printf.[
+            sprintf "M %g,%g" coordx coordy ;
+            sprintf "L %g,%g" coordx' coordy ;
+            sprintf "L %g,%g" coordx' middley ;
+            sprintf "A %g,%g 0 0 1 %g,%g" radius radius coordx middley ;
+            "z"
+          ] in
+      set_attributes path ([
+          ("d", Js.string path_d) ;
+          ("style", Js.string style)
+        ] @ transform_rotate rotation) ;
+      [path]
+    )
+
 let draw_circle_shades canvas (x, y) level
     ?(diameter=1) ?(proportion=1.) ?(rotation=0.) color =
   draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~lighten:true color
@@ -332,7 +386,7 @@ let base_plate canvas xy ?(size=(1, 1)) color =
 
 let square_tile canvas xy ?(level=2) ?(size=(1, 1)) color =
   let rotation = get_rotation_size xy size in
-  let proportion = 0.92 in
+  let proportion = 0.95 in
   draw_rectangle canvas xy (level - 2) ~size ~proportion ~rotation ~darken:true color ;
   draw_rectangle canvas xy level ~size ~proportion ~rotation color
 
@@ -344,6 +398,31 @@ let round_tile canvas xy ?(level=2) ?(diameter=1) color =
     draw_circle_shades canvas xy (level - 1) ~diameter ~proportion ~rotation color ;
   draw_circle canvas xy (level - 2) ~diameter ~proportion ~rotation ~darken:true color ;
   draw_circle canvas xy level ~diameter ~proportion ~rotation color
+
+let convert_direction = function
+  | Dot.North -> 0.
+  | Dot.West -> -90.
+  | Dot.South -> 180.
+  | Dot.East -> 90.
+
+let quarter_tile canvas xy ?(level=2) direction color =
+  let rotation =
+    let size = (1, 1) in
+    get_rotation_size xy size in
+  let rotation = rotation +. convert_direction direction in
+  let rotation = rotation +. 90. in (* The function draw_quarter is drawing it West by default. *)
+  let proportion = 0.95 in
+  draw_quarter canvas xy (level - 2) ~proportion ~rotation ~darken:true color ;
+  draw_quarter canvas xy level ~proportion ~rotation color
+
+let half_circle_tile canvas xy ?(level=2) direction color =
+  let rotation =
+    let size = (1, 1) in
+    get_rotation_size xy size in
+  let rotation = rotation +. convert_direction direction in
+  let proportion = 0.95 in
+  draw_half_circle canvas xy (level - 2) ~proportion ~rotation ~darken:true color ;
+  draw_half_circle canvas xy level ~proportion ~rotation color
 
 end
 

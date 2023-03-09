@@ -24,5 +24,13 @@ val square_tile : t -> (int * int) -> ?level:int -> ?size:(int * int) -> Dot.col
 (* Draw a round tile at the given coordinates. *)
 val round_tile : t -> (int * int) -> ?level:int -> ?diameter:int -> Dot.color -> unit
 
+(* Draw a quarter tile at the given coordinates, following the same orientation
+  convention than Dot.Quarter. *)
+val quarter_tile : t -> (int * int) -> ?level:int -> Dot.direction -> Dot.color -> unit
+
+(* Draw a half-circle tile at the given coordinates, following the same orientation
+  convention than Dot.Half_circle. *)
+val half_circle_tile : t -> (int * int) -> ?level:int -> Dot.direction -> Dot.color -> unit
+
 end
 
