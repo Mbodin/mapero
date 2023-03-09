@@ -119,7 +119,10 @@ let init on_change =
     let (min_coord_x, min_coord_y) = !(r.min_coord) in
     let (size_x, size_y) = !(r.size) in
     let (shift_coord_x, shift_coord_y) =
-      let shift w = pixel_stud - (w mod pixel_stud) in
+      let shift w =
+        let m = w mod pixel_stud in
+        if m = 0 then 0
+        else pixel_stud - (w mod pixel_stud) in
       (shift (window_x ()), shift (window_y ())) in
     let convert v = string_of_int (v * pixel_stud) in
     set_attributes r.svg [
@@ -202,6 +205,9 @@ val draw_rectangle : t -> (int * int) -> int -> ?size:(int * int) -> ?proportion
 (* Same, but for a circle. *)
 val draw_circle : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
 
+(* Draw the shades that can be seen underneath a transparent circle tile. *)
+val draw_circle_shades : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> Dot.color -> unit
+
 end = struct
 
 let pixel_stud = Float.of_int pixel_stud
@@ -213,7 +219,7 @@ let transform_rotate = function
   | rotation -> [("transform", Js.string (Printf.sprintf "rotate(%g)" rotation))]
 
 (* Prepare the drawing coordinates and colors. *)
-let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false) color build_nodes =
+let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false) ?(lighten=false) color build_nodes =
   let (dx, dy) = size in
   let x', y' = x + dx, y + dy in
   let coord = get_perspective (x, y) level in
@@ -221,7 +227,11 @@ let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false
   let style =
     let (r, g, b) = Color.to_rgb color in
     let (r, g, b) =
-      if darken then (r / 2, g / 2, b / 2) else (r, g, b) in
+      let dark v = (v * 3) / 4 in
+      if darken then (dark r, dark g, dark b) else (r, g, b) in
+    let (r, g, b) =
+      let light v = (2 * v + 255) / 3 in
+      if lighten then (light r, light g, light b) else (r, g, b) in
     Printf.sprintf "fill:rgb(%d,%d,%d);" r g b in
   let style =
     if Color.is_transparent color then
@@ -279,6 +289,13 @@ let draw_circle canvas (x, y) level
       [circle]
     )
 
+let draw_circle_shades canvas (x, y) level
+    ?(diameter=1) ?(proportion=1.) ?(rotation=0.) color =
+  draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~lighten:true color
+    (fun (coordx, coordy) (coordx', coordy') style ->
+       [] (* TODO *)
+    )
+
 end
 
 (* Drawing LEGO pieces. *)
@@ -294,35 +311,40 @@ let get_rotation =
   match I2Map.find_opt xy !rotations with
   | Some r -> r
   | None ->
-    let r = (Random.float 10.) -. 5. in
+    let r = (Random.float 8.) -. 4. in
     rotations := I2Map.add xy r !rotations ;
     r
 
 (* We only rotate dots. *)
-let get_rotation_size xy size =
-  if size = (1, 1) then get_rotation xy
+let get_rotation_size ?(double_rotation=false) xy size =
+  if size = (1, 1) then
+    let r = get_rotation xy in
+    if double_rotation then 2. *. r else r
   else 0.
 
-(* TODO: Set up the proportions to match LEGo's. *)
 
 let base_plate canvas xy ?(size=(1, 1)) color =
   (* Stud proportion. *)
-  let proportion = 0.5 in
+  let proportion = 0.57 in
   draw_rectangle canvas xy 0 ~size color ;
   draw_circle canvas xy 0 ~proportion ~darken:true color ;
   draw_circle canvas xy 1 ~proportion color
 
 let square_tile canvas xy ?(level=2) ?(size=(1, 1)) color =
   let rotation = get_rotation_size xy size in
-  let proportion = 0.9 in
+  let proportion = 0.92 in
   draw_rectangle canvas xy (level - 2) ~size ~proportion ~rotation ~darken:true color ;
   draw_rectangle canvas xy level ~size ~proportion ~rotation color
 
 let round_tile canvas xy ?(level=2) ?(diameter=1) color =
-  let rotation = get_rotation_size xy (diameter, diameter) in
-  let proportion = 0.9 in
+  let rotation = get_rotation_size ~double_rotation:true xy (diameter, diameter) in
+  let proportion = 0.95 in
+  if Color.is_transparent color then
+    (* Adding special shades underneath the circle. *)
+    draw_circle_shades canvas xy (level - 1) ~diameter ~proportion ~rotation color ;
   draw_circle canvas xy (level - 2) ~diameter ~proportion ~rotation ~darken:true color ;
   draw_circle canvas xy level ~diameter ~proportion ~rotation color
 
 end
+
 
