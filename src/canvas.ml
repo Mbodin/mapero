@@ -13,22 +13,33 @@ let pixel_stud_height = pixel_stud / 4
   The value may be underestimated to exagerate the effect. *)
 let distance_to_user = 200
 
-let shadow_angle = 135
-
+let shadow_angle = 135.
+let shadow_distance = Float.of_int pixel_stud /. 2.5
 
 (* Some generic DOM functions *)
 
 let window = Dom_html.window
 let document = window##.document
 
-let set_attributes elem l =
+
+type node = Dom.element Js.t
+type nodeHTML = Dom_html.element Js.t
+type nodeSVG = Dom_svg.element Js.t
+
+let setAttributes elem l =
   List.iter (fun (key, value) ->
     ignore (elem##setAttribute (Js.string key) value)) l
 
-let createSVGElement kind attributes =
-  let element =
-    document##createElementNS (Js.string "http://www.w3.org/2000/svg") (Js.string kind) in
-  set_attributes element attributes ;
+let namespace_SVG = Js.string "http://www.w3.org/2000/svg"
+
+let setSVGAttributes (elem : nodeSVG) l =
+  List.iter (fun (key, value) ->
+    ignore (elem##setAttributeNS namespace_SVG (Js.string key) value)) l
+
+let createSVGElement kind attributes : node =
+  let element : nodeSVG =
+    document##createElementNS namespace_SVG (Js.string kind) in
+  setSVGAttributes element attributes ;
   element
 
 let rec clear_node n =
@@ -38,9 +49,6 @@ let rec clear_node n =
     clear_node n
   | None -> ()
 
-
-
-type node = Dom_html.element Js.t
 
 module IMap = Map.Make (Structures.IntOrder)
 
@@ -169,7 +177,7 @@ let init on_change =
       let gradient =
         createSVGElement "linearGradient" [
           ("id", Js.string "gradient_cardioid") ;
-          ("gradientTransform", Js.string (Printf.sprintf "rotate(%d,.5,.5)" shadow_angle))
+          ("gradientTransform", Js.string (Printf.sprintf "rotate(%g,.5,.5)" shadow_angle))
         ] in
       let stop1 =
         createSVGElement "stop" [
@@ -214,7 +222,7 @@ let init on_change =
         else pixel_stud - (w mod pixel_stud) in
       (shift (window_x ()), shift (window_y ())) in
     let convert v = string_of_int (v * pixel_stud) in
-    set_attributes r.svg [
+    setSVGAttributes r.svg [
         ("width", Js.string (convert size_x)) ;
         ("height", Js.string (convert size_y)) ;
         ("style", Js.string
@@ -305,29 +313,36 @@ module DrawBasic : sig
   The size argument enables it to fill that many cells.
   If the proportion is less than 1., its borders will be shrinked by that many.
   We can also specify a rotation in degrees.
-  Finally, the darken boolean can be specified to make the color darker. *)
-val draw_rectangle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+  Finally, the darken boolean can be specified to make the color darker.
+  The accumulator is a function that gets the raw nodes being drawn. *)
+val draw_rectangle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
 
 (* Same, but for a circle. *)
-val draw_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+val draw_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
 
 (* Draw a quarter of a circle, with its angle at North-West. *)
-val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
 
 (* Draw a shape like the LEGO half-circle of a circle, with its straight border Noth. *)
-val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
 
 (* Draw the halo due to the surface reflection of the angle at the side of a circular dot. *)
-val draw_side_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> Dot.color -> unit
+val draw_side_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(node -> unit) -> Dot.color -> unit
 
 (* Draw the halo that can be seen underneath a transparent circle tile.
   This halo is probably caused by the reflection of the side halo above on the bottom of the
   transparent tile. *)
-val draw_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> Dot.color -> unit
+val draw_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(node -> unit) -> Dot.color -> unit
 
 (* Draw the cardioid due to the inner reflection of light that can be seen underneath
   a transparent circle tile. *)
-val draw_cardioid : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> Dot.color -> unit
+val draw_cardioid : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(node -> unit) -> Dot.color -> unit
+
+(* This function is to draw shadows.
+  It takes as argument two pairs of angle and distance: these correspond to the left and right
+  extreme points of the shape.
+  It returns an accumulator that will copy any given shape to the shadow. *)
+val draw_shadow : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?angle_left:float -> float -> ?angle_right:float -> float -> ?color:Dot.color -> (node -> unit)
 
 end = struct
 
@@ -340,7 +355,9 @@ let transform_rotate = function
   | rotation -> [("transform", Js.string (Printf.sprintf "rotate(%g)" rotation))]
 
 (* Prepare the drawing coordinates and colors. *)
-let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1)) ?(rotation=0.) ?(darken=false) ?(lighten=false) color build_nodes =
+let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
+    ?(rotation=0.) ?(darken=false) ?(lighten=false)
+    ?(accumulator=fun _ -> ()) color build_nodes =
   let (dx, dy) = size in
   let x', y' = x + dx, y + dy in
   let coord = get_perspective (x, y) level in
@@ -361,6 +378,7 @@ let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1)) ?(rotati
   let l = build_nodes coord coord' style in
   let level = get_level canvas ~sub_level:sub_level level in
   List.iter (Dom.appendChild level) l ;
+  List.iter accumulator l ;
   (* Dealing with special cases. *)
   match color with
   | Letter c ->
@@ -379,9 +397,9 @@ let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1)) ?(rotati
     ()
   | _ -> ()
 
-let draw_rectangle canvas (x, y) level ?(sub_level=Objects)
-    ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~sub_level ~size ~rotation ~darken color
+let draw_rectangle canvas xy level ?(sub_level=Objects)
+    ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas xy level ~sub_level ~size ~rotation ~darken ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let rect =
@@ -395,9 +413,10 @@ let draw_rectangle canvas (x, y) level ?(sub_level=Objects)
       [rect]
     )
 
-let draw_circle canvas (x, y) level ?(sub_level=Objects)
-    ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~rotation ~darken color
+let draw_circle canvas xy level ?(sub_level=Objects)
+    ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas xy level ~sub_level ~size:(diameter, diameter)
+    ~rotation ~darken ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let radius = pixel_stud *. Float.of_int diameter /. 2. in
       let circle =
@@ -411,8 +430,9 @@ let draw_circle canvas (x, y) level ?(sub_level=Objects)
     )
 
 let draw_quarter canvas (x, y) level ?(sub_level=Objects)
-    ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y - 1) level ~sub_level ~size:(2, 2) ~rotation ~darken color
+    ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas (x, y - 1) level ~sub_level ~size:(2, 2)
+    ~rotation ~darken ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let radius = pixel_stud *. proportion in
       let cx = (coordx +. coordx') /. 2. in
@@ -434,9 +454,9 @@ let draw_quarter canvas (x, y) level ?(sub_level=Objects)
       [path]
     )
 
-let draw_half_circle canvas (x, y) level ?(sub_level=Objects)
-    ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~sub_level ~rotation ~darken color
+let draw_half_circle canvas xy level ?(sub_level=Objects)
+    ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas xy level ~sub_level ~rotation ~darken ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
@@ -459,9 +479,10 @@ let draw_half_circle canvas (x, y) level ?(sub_level=Objects)
       [path]
     )
 
-let draw_side_halo canvas (x, y) level ?(sub_level=Lights)
-    ?(diameter=1) ?(proportion=1.) color =
-  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~lighten:true color
+let draw_side_halo canvas xy level ?(sub_level=Lights)
+    ?(diameter=1) ?(proportion=1.) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas xy level ~sub_level ~size:(diameter, diameter)
+    ~lighten:true ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let radius = pixel_stud *. proportion *. Float.of_int diameter /. 2. in
       let cx = (coordx +. coordx') /. 2. in
@@ -486,9 +507,10 @@ let draw_side_halo canvas (x, y) level ?(sub_level=Lights)
     )
 
 
-let draw_halo canvas (x, y) level ?(sub_level=Lights)
-    ?(diameter=1) ?(proportion=1.) color =
-  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~lighten:true color
+let draw_halo canvas xy level ?(sub_level=Lights)
+    ?(diameter=1) ?(proportion=1.) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas xy level ~sub_level ~size:(diameter, diameter)
+    ~lighten:true ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') _style ->
       let style = "fill:white; fill-opacity:.2; filter:url(#blur_light_moon);" in
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
@@ -513,9 +535,10 @@ let draw_halo canvas (x, y) level ?(sub_level=Lights)
       [halo]
     )
 
-let draw_cardioid canvas (x, y) level ?(sub_level=Lights)
-    ?(diameter=1) ?(proportion=1.) color =
-  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~lighten:true color
+let draw_cardioid canvas xy level ?(sub_level=Lights)
+    ?(diameter=1) ?(proportion=1.) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas xy level ~sub_level ~size:(diameter, diameter)
+    ~lighten:true ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') _style ->
       let style = "fill:url(#gradient_cardioid); fill-opacity:.5; filter:url(#blur_light_moon);" in
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
@@ -546,6 +569,28 @@ let draw_cardioid canvas (x, y) level ?(sub_level=Lights)
           ] in
       [cardioid]
     )
+
+let draw_shadow canvas xy level ?(sub_level=Shadows)
+      ?(angle_left=(-135.)) distance_left ?(angle_right=45.) distance_right ?(color=Dot.Black) =
+  let g = createSVGElement "g" [] in
+  let shiftx = shadow_distance *. cos (to_radian shadow_angle) in
+  let shifty = shadow_distance *. sin (to_radian shadow_angle) in
+  draw_figure canvas xy level ~sub_level ~darken:true color
+    (fun (coordx, coordy) (coordx', coordy') _style ->
+       [g] (* TODO *)
+    ) ;
+  fun (node : node) -> (
+    let node1 = node##cloneNode Js._true in
+    let node2 = node##cloneNode Js._true in
+    let transform =
+      Js.Opt.get
+        (Js.Opt.map (node2##getAttribute (Js.string "transform")) Js.to_string)
+        (fun () -> "") in
+    let transform = transform ^ Printf.sprintf " translate(%g, %g)" shiftx shifty in
+    setSVGAttributes node2 [("transform", Js.string transform)] ;
+    Dom.appendChild g node1 ;
+    Dom.appendChild g node2
+  )
 
 end
 
