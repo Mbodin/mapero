@@ -44,15 +44,36 @@ type node = Dom_html.element Js.t
 
 module IMap = Map.Make (Structures.IntOrder)
 
+(* Each levels is divided into four sublevels, each containing an SVG layer. *)
+type sub_levels = {
+  objects : node (* The main objects of this level. *) ;
+  shadows : node (* Shadows drawn directly on these objects, or any substractive light. *) ;
+  lights : node (* Additive lights added directly on these objects. *) ;
+  passing_through : node (* Objects with volume that pass through the current level. *)
+}
+
+type sub_level_type =
+  | Objects
+  | Shadows
+  | Lights
+  | PassingThrough
+
 type t = {
-  svg : node ; (* The main svg element. *)
-  levels : node IMap.t ref ; (* A group for each level. *)
+  svg : node (* The main svg element. *) ;
+  levels : sub_levels IMap.t ref (* A group for each level. *) ;
   size : (int * int) ref (* The current size of the whole canvas. *) ;
   min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
 }
 (* Note that the cell (0, 0) is the center for the perspective, not the minimum cell.
   The minimum cell has negative coordinates. *)
 (* The level of the top of a stud is 1, a usual LEGO brick without stud is 6, a usual tile is 2. *)
+
+
+let get_sub_level sub_level = function
+  | Objects -> sub_level.objects
+  | Shadows -> sub_level.shadows
+  | Lights -> sub_level.lights
+  | PassingThrough -> sub_level.passing_through
 
 
 let iter f canvas =
@@ -82,6 +103,16 @@ let init_svg () =
 let window_x, window_y =
   (fun _ -> window##.innerWidth),
   (fun _ -> window##.innerHeight)
+
+let create_sub_levels level =
+  let create name =
+    createSVGElement "g" [("id", Js.string (Printf.sprintf "%s-%d" name level))]
+  in {
+    objects = create "level" ;
+    shadows = create "shadows" ;
+    lights = create "lights" ;
+    passing_through = create "volumes"
+  }
 
 let init on_change =
   let xy = ref (0, 0) in
@@ -146,7 +177,7 @@ let init on_change =
           ("stop-color", Js.string "white") ;
           ("stop-opacity", Js.string "1")
         ] in
-      let stop1 =
+      let stop2 =
         createSVGElement "stop" [
           ("offset", Js.string ".5") ;
           ("stop-color", Js.string "white") ;
@@ -166,9 +197,12 @@ let init on_change =
     defs in
   Dom.appendChild r.svg defs ;
   (* Creating a level 0 *)
-  let g = createSVGElement "g" [("id", Js.string "level-0")] in
-  Dom.appendChild r.svg g ;
-  r.levels := IMap.add 0 g !(r.levels) ;
+  let sub_level = create_sub_levels 0 in
+  Dom.appendChild r.svg sub_level.objects ;
+  Dom.appendChild r.svg sub_level.shadows ;
+  Dom.appendChild r.svg sub_level.lights ;
+  Dom.appendChild r.svg sub_level.passing_through ;
+  r.levels := IMap.add 0 sub_level !(r.levels) ;
   let on_change _ =
     update_xy () ;
     let (min_coord_x, min_coord_y) = !(r.min_coord) in
@@ -199,24 +233,33 @@ let init on_change =
   r
 
 let clear canvas =
-  IMap.iter (fun _level node -> clear_node node) !(canvas.levels)
+  IMap.iter (fun _level sub_level ->
+      clear_node sub_level.objects ;
+      clear_node sub_level.shadows ;
+      clear_node sub_level.lights ;
+      clear_node sub_level.passing_through
+    ) !(canvas.levels)
 
 
 (* Fetch the group corresponding to the given level. *)
-let get_level canvas level =
+let get_level canvas ?(sub_level=Objects) level =
   let rec aux level =
     assert (level >= 0) ;
     match IMap.find_opt level !(canvas.levels) with
-    | Some g -> g
+    | Some sub_level -> sub_level
     | None ->
       (* Creating all previous levels and adding them before the current level. *)
       ignore (aux (level - 1)) ;
       (* Adding the current level. *)
-      let g = createSVGElement "g" [("id", Js.string (Printf.sprintf "level-%d" level))] in
-      Dom.insertBefore canvas.svg g Js.Opt.empty ;
-      canvas.levels := IMap.add level g !(canvas.levels) ;
-      g in
-  aux level
+      let sub_level = create_sub_levels level in
+      Dom.insertBefore canvas.svg sub_level.objects Js.Opt.empty ;
+      Dom.insertBefore canvas.svg sub_level.shadows Js.Opt.empty ;
+      Dom.insertBefore canvas.svg sub_level.lights Js.Opt.empty ;
+      Dom.insertBefore canvas.svg sub_level.passing_through Js.Opt.empty ;
+      canvas.levels := IMap.add level sub_level !(canvas.levels) ;
+      sub_level in
+  let sub_levels = aux level in
+  get_sub_level sub_levels sub_level
 
 (* Get the coordinates on screen of the given coordinate at the given level.
   Because of perspective, they can be shifted. *)
@@ -254,19 +297,19 @@ module DrawBasic : sig
   If the proportion is less than 1., its borders will be shrinked by that many.
   We can also specify a rotation in degrees.
   Finally, the darken boolean can be specified to make the color darker. *)
-val draw_rectangle : t -> (int * int) -> int -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+val draw_rectangle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
 
 (* Same, but for a circle. *)
-val draw_circle : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+val draw_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
 
 (* Draw a quarter of a circle, with its angle at North-West. *)
-val draw_quarter : t -> (int * int) -> int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
 
 (* Draw a shape like the LEGO half-circle of a circle, with its straight border Noth. *)
-val draw_half_circle : t -> (int * int) -> int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
+val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
 
 (* Draw the shades that can be seen underneath a transparent circle tile. *)
-val draw_circle_shades : t -> (int * int) -> int -> ?diameter:int -> ?proportion:float -> ?rotation:float -> Dot.color -> unit
+val draw_circle_shades : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> Dot.color -> unit
 
 end = struct
 
@@ -279,7 +322,7 @@ let transform_rotate = function
   | rotation -> [("transform", Js.string (Printf.sprintf "rotate(%g)" rotation))]
 
 (* Prepare the drawing coordinates and colors. *)
-let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false) ?(lighten=false) color build_nodes =
+let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1)) ?(rotation=0.) ?(darken=false) ?(lighten=false) color build_nodes =
   let (dx, dy) = size in
   let x', y' = x + dx, y + dy in
   let coord = get_perspective (x, y) level in
@@ -298,7 +341,7 @@ let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false
       style ^ "fill-opacity:.5;"
     else style in
   let l = build_nodes coord coord' style in
-  let level = get_level canvas level in
+  let level = get_level canvas ~sub_level:sub_level level in
   List.iter (Dom.appendChild level) l ;
   (* Dealing with special cases. *)
   match color with
@@ -318,9 +361,9 @@ let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false
     ()
   | _ -> ()
 
-let draw_rectangle canvas (x, y) level
+let draw_rectangle canvas (x, y) level ?(sub_level=Objects)
     ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~size ~rotation ~darken color
+  draw_figure canvas (x, y) level ~sub_level ~size ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let rect =
@@ -334,9 +377,9 @@ let draw_rectangle canvas (x, y) level
       [rect]
     )
 
-let draw_circle canvas (x, y) level
+let draw_circle canvas (x, y) level ?(sub_level=Objects)
     ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~darken color
+  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let radius = pixel_stud *. Float.of_int diameter /. 2. in
       let circle =
@@ -349,9 +392,9 @@ let draw_circle canvas (x, y) level
       [circle]
     )
 
-let draw_quarter canvas (x, y) level
+let draw_quarter canvas (x, y) level ?(sub_level=Objects)
     ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~rotation ~darken color
+  draw_figure canvas (x, y) level ~sub_level ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
@@ -372,9 +415,9 @@ let draw_quarter canvas (x, y) level
       [path]
     )
 
-let draw_half_circle canvas (x, y) level
+let draw_half_circle canvas (x, y) level ?(sub_level=Objects)
     ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~rotation ~darken color
+  draw_figure canvas (x, y) level ~sub_level ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
@@ -397,9 +440,9 @@ let draw_half_circle canvas (x, y) level
       [path]
     )
 
-let draw_circle_shades canvas (x, y) level
+let draw_circle_shades canvas (x, y) level ?(sub_level=Objects)
     ?(diameter=1) ?(proportion=1.) ?(rotation=0.) color =
-  draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~lighten:true color
+  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~rotation ~lighten:true color
     (fun (coordx, coordy) (coordx', coordy') _style ->
       let style_blur = "fill:white; fill-opacity:.5; filter:url(#blur_light_moon);" in
       let style_cardioid = "fill:url(#gradient_cardioid); fill-opacity:.5; filter:url(#blur_light_moon);" in
@@ -450,6 +493,16 @@ end
 (* Drawing LEGO pieces. *)
 module Lego = struct
 
+(* Note that the levels in this module differ from the other representation of the level
+  in the file: beforehand, it was splited in 2 to accomodate for smaller measurments like
+  stud height.  In this module it is meant to be the actual number of plates needed, so
+  there is a 2-factor in place there. *)
+
+(* The following two constant converts the levels from the current system to the old one. *)
+let default_level = 2
+let convert_level level = 2 * level
+
+
 open DrawBasic
 
 module I2Map = Map.Make (Structures.ProductOrderedType (Structures.IntOrder) (Structures.IntOrder))
@@ -476,30 +529,33 @@ let remove_letters = function
   | c -> c
 
 let base_plate canvas xy ?(size=(1, 1)) color =
+  draw_rectangle canvas xy 0 ~size (remove_letters color) ;
   (* Stud proportion. *)
   let proportion = 0.57 in
-  draw_rectangle canvas xy 0 ~size (remove_letters color) ;
-  draw_circle canvas xy 0 ~proportion ~darken:true (remove_letters color) ;
+  draw_circle canvas xy 0 ~sub_level:PassingThrough ~proportion ~darken:true (remove_letters color) ;
   draw_circle canvas xy 1 ~proportion color
 
-let square_tile canvas xy ?(level=2) ?(size=(1, 1)) color =
+let square_tile canvas xy ?(level=default_level) ?(size=(1, 1)) color =
+  let level = convert_level level in
   let rotation = get_rotation_size xy size in
   let proportion = 0.95 in
-  draw_rectangle canvas xy (level - 2) ~size ~proportion ~rotation ~darken:true
-    (remove_letters color) ;
+  draw_rectangle canvas xy (level - 2) ~sub_level:PassingThrough ~size ~proportion ~rotation
+    ~darken:true (remove_letters color) ;
   draw_rectangle canvas xy level ~size ~proportion ~rotation color
 
-let round_tile canvas xy ?(level=2) ?(diameter=1) color =
+let round_tile canvas xy ?(level=default_level) ?(diameter=1) color =
+  let level = convert_level level in
   let rotation = get_rotation_size ~double_rotation:true xy (diameter, diameter) in
   let proportion = 0.95 in
   if Color.is_transparent color then (
     (* Adding special shades underneath the circle. *)
     let proportion = 0.57 in
     (* Note that we dropped the rotation: the light is always coming from the same direction. *)
-    draw_circle_shades canvas xy (level - 1) ~diameter ~proportion color
+    draw_circle_shades canvas xy (level - 1) ~sub_level:Lights ~diameter ~proportion color
+    (* TODO: The cardioid is actually at level (level - 2). *)
   ) ;
-  draw_circle canvas xy (level - 2) ~diameter ~proportion ~rotation ~darken:true
-    (remove_letters color) ;
+  draw_circle canvas xy (level - 2) ~sub_level:PassingThrough ~diameter ~proportion ~rotation
+    ~darken:true (remove_letters color) ;
   draw_circle canvas xy level ~diameter ~proportion ~rotation color
 
 let convert_direction = function
@@ -508,25 +564,27 @@ let convert_direction = function
   | Dot.South -> 180.
   | Dot.East -> 90.
 
-let quarter_tile canvas xy ?(level=2) direction color =
+let quarter_tile canvas xy ?(level=default_level) direction color =
+  let level = convert_level level in
   let rotation =
     let size = (1, 1) in
     get_rotation_size xy size in
   let rotation = rotation +. convert_direction direction in
   let rotation = rotation +. 90. in (* The function draw_quarter is drawing it West by default. *)
   let proportion = 0.95 in
-  draw_quarter canvas xy (level - 2) ~proportion ~rotation ~darken:true
-    (remove_letters color) ;
+  draw_quarter canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
+    ~darken:true (remove_letters color) ;
   draw_quarter canvas xy level ~proportion ~rotation color
 
-let half_circle_tile canvas xy ?(level=2) direction color =
+let half_circle_tile canvas xy ?(level=default_level) direction color =
+  let level = convert_level level in
   let rotation =
     let size = (1, 1) in
     get_rotation_size xy size in
   let rotation = rotation +. convert_direction direction in
   let proportion = 0.95 in
-  draw_half_circle canvas xy (level - 2) ~proportion ~rotation ~darken:true
-    (remove_letters color) ;
+  draw_half_circle canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
+    ~darken:true (remove_letters color) ;
   draw_half_circle canvas xy level ~proportion ~rotation color
 
 end

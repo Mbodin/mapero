@@ -15,6 +15,8 @@ val clear : t -> unit
 
 module Lego : sig
 
+(* In this module, levels are represented by the number of plates required to reach it. *)
+
 (* Draw a base plate at the given coordinates. *)
 val base_plate : t -> (int * int) -> ?size:(int * int) -> Dot.color -> unit
 
