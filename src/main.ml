@@ -17,14 +17,18 @@ let draw canvas =
     ) canvas ;
   (* Some tests. *)
   List.iteri (fun i c ->
-      square_tile canvas (i - 5, -2) c ;
-      round_tile canvas (i - 5, -1) c ;
-      quarter_tile canvas (i - 5, 0) Dot.North c ;
-      half_circle_tile canvas (i - 5, 1) Dot.South c
+      square_tile canvas (i - 5, -5) c ;
+      round_tile canvas (i - 5, -4) c ;
+      List.iteri (fun j d ->
+          quarter_tile canvas (i - 5, -3 + j) d c ;
+          half_circle_tile canvas (i - 5, 1 + j) d c
+        ) Dot.[North; West; South; East]
     ) Dot.[Black; White; Bright_green; Bright_light_blue; Coral; Dark_azure; Dark_turquoise;
-           Lavender; Trans_orange; Satin_trans_clear; Yellow] ;
+           Lavender; Trans_orange; Satin_trans_clear; Yellow;
+           Bright_light_orange; Bright_light_yellow; Bright_pink; Light_aqua;
+           Medium_azure; Yellowish_green] ;
   List.iteri (fun i c ->
-      round_tile canvas (i - 5, 2) c
+      round_tile canvas (i - 5, 5) c
     ) Dot.[Letter "T"; Letter "E"; Letter "S"; Letter "T"] ;
   () (* TODO *)
 

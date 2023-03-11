@@ -13,7 +13,7 @@ let pixel_stud_height = pixel_stud / 4
   The value may be underestimated to exagerate the effect. *)
 let distance_to_user = 200
 
-let shadow_angle = -135
+let shadow_angle = 135
 
 
 (* Some generic DOM functions *)
@@ -139,7 +139,7 @@ let init on_change =
         String.concat "\n\t" [
           "* { transform-origin: center; transform-box: fill-box; }" ;
           "text { font-family: \"Noto\", sans-serif; font-weight: bold;"
-          ^ "text-anchor: middle; dominant-baseline: middle; }"
+          ^ " text-anchor: middle; dominant-baseline: central; }"
         ] in
       document##createTextNode (Js.string content) in
     Dom.appendChild style styles ;
@@ -169,7 +169,7 @@ let init on_change =
       let gradient =
         createSVGElement "linearGradient" [
           ("id", Js.string "gradient_cardioid") ;
-          ("gradientTransform", Js.string (Printf.sprintf "rotate(%d,.5,.5)" (-shadow_angle)))
+          ("gradientTransform", Js.string (Printf.sprintf "rotate(%d,.5,.5)" shadow_angle))
         ] in
       let stop1 =
         createSVGElement "stop" [
@@ -288,6 +288,15 @@ let get_perspective =
       v *. pixel_stud +. shift *. Float.of_int level in
     (compute x, compute y)
 
+(* Convert a angle in degree to an angle in radian. *)
+let to_radian angle = angle *. Float.pi /. 180.
+
+(* Given a center point, an angle, and a distance, compute the coordinates of the point
+  at this distance from the center point following this angle. *)
+let angular_from (x, y) angle distance =
+  let angle = to_radian angle in
+  (x +. distance *. cos angle, y +. distance *. sin angle)
+
 
 (* Basic drawing functions. *)
 module DrawBasic : sig
@@ -308,8 +317,17 @@ val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?prop
 (* Draw a shape like the LEGO half-circle of a circle, with its straight border Noth. *)
 val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> Dot.color -> unit
 
-(* Draw the shades that can be seen underneath a transparent circle tile. *)
-val draw_circle_shades : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> Dot.color -> unit
+(* Draw the halo due to the surface reflection of the angle at the side of a circular dot. *)
+val draw_side_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> Dot.color -> unit
+
+(* Draw the halo that can be seen underneath a transparent circle tile.
+  This halo is probably caused by the reflection of the side halo above on the bottom of the
+  transparent tile. *)
+val draw_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> Dot.color -> unit
+
+(* Draw the cardioid due to the inner reflection of light that can be seen underneath
+  a transparent circle tile. *)
+val draw_cardioid : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> Dot.color -> unit
 
 end = struct
 
@@ -394,18 +412,19 @@ let draw_circle canvas (x, y) level ?(sub_level=Objects)
 
 let draw_quarter canvas (x, y) level ?(sub_level=Objects)
     ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
-  draw_figure canvas (x, y) level ~sub_level ~rotation ~darken color
+  draw_figure canvas (x, y - 1) level ~sub_level ~size:(2, 2) ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
-      let delta = (1. -. proportion) *. pixel_stud /. 2. in
-      let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
-      let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
       let radius = pixel_stud *. proportion in
+      let cx = (coordx +. coordx') /. 2. in
+      let cy = (coordy +. coordy') /. 2. in
+      let (coordx, coordy) = angular_from (cx, cy) 180. radius in
+      let (coordx', coordy') = angular_from (cx, cy) 90. radius in
       let path =
         let path_d =
           String.concat " " Printf.[
-              sprintf "M %g,%g" coordx coordy ;
-              sprintf "L %g,%g" coordx' coordy ;
-              sprintf "A %g %g 0 0 1 %g,%g" radius radius coordx coordy' ;
+              sprintf "M %g,%g" coordx' coordy ;
+              sprintf "L %g,%g" coordx' coordy' ;
+              sprintf "A %g %g 0 0 1 %g,%g" radius radius coordx coordy ;
               "z"
             ] in
         createSVGElement "path" ([
@@ -440,19 +459,45 @@ let draw_half_circle canvas (x, y) level ?(sub_level=Objects)
       [path]
     )
 
-let draw_circle_shades canvas (x, y) level ?(sub_level=Objects)
-    ?(diameter=1) ?(proportion=1.) ?(rotation=0.) color =
-  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~rotation ~lighten:true color
+let draw_side_halo canvas (x, y) level ?(sub_level=Lights)
+    ?(diameter=1) ?(proportion=1.) color =
+  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~lighten:true color
+    (fun (coordx, coordy) (coordx', coordy') style ->
+      let radius = pixel_stud *. proportion *. Float.of_int diameter /. 2. in
+      let cx = (coordx +. coordx') /. 2. in
+      let cy = (coordy +. coordy') /. 2. in
+      let (ax, ay) = angular_from (cx, cy) (-75.) radius in
+      let (bx, by) = angular_from (cx, cy) (-15.) radius in
+      let halo =
+        let path_d =
+          let larger_radius = radius *. 2. in
+          String.concat " " Printf.[
+              sprintf "M %g,%g" ax ay ;
+              sprintf "A %g %g 0 0 1 %g,%g" radius radius bx by ;
+              sprintf "A %g %g 0 0 0 %g,%g" larger_radius larger_radius ax ay ;
+              "z"
+            ] in
+        createSVGElement "path" [
+            ("d", Js.string path_d) ;
+            ("fill-opacity", Js.string ".8") ;
+            ("style", Js.string style)
+          ] in
+        [halo]
+    )
+
+
+let draw_halo canvas (x, y) level ?(sub_level=Lights)
+    ?(diameter=1) ?(proportion=1.) color =
+  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~lighten:true color
     (fun (coordx, coordy) (coordx', coordy') _style ->
-      let style_blur = "fill:white; fill-opacity:.5; filter:url(#blur_light_moon);" in
-      let style_cardioid = "fill:url(#gradient_cardioid); fill-opacity:.5; filter:url(#blur_light_moon);" in
+      let style = "fill:white; fill-opacity:.2; filter:url(#blur_light_moon);" in
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
       let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
       let middlex = (coordx +. coordx') /. 2. in
       let middley = (coordy +. coordy') /. 2. in
       let radius = pixel_stud *. proportion /. 2. in
-      let moon =
+      let halo =
         let path_d =
           let larger_radius = radius *. 1.5 in
           String.concat " " Printf.[
@@ -461,10 +506,24 @@ let draw_circle_shades canvas (x, y) level ?(sub_level=Objects)
               sprintf "A %g %g 0 0 0 %g,%g" larger_radius larger_radius middlex coordy ;
               "z"
             ] in
-        createSVGElement "path" ([
+        createSVGElement "path" [
             ("d", Js.string path_d) ;
-            ("style", Js.string style_blur)
-          ] @ transform_rotate rotation) in
+            ("style", Js.string style)
+          ] in
+      [halo]
+    )
+
+let draw_cardioid canvas (x, y) level ?(sub_level=Lights)
+    ?(diameter=1) ?(proportion=1.) color =
+  draw_figure canvas (x, y) level ~sub_level ~size:(diameter, diameter) ~lighten:true color
+    (fun (coordx, coordy) (coordx', coordy') _style ->
+      let style = "fill:url(#gradient_cardioid); fill-opacity:.5; filter:url(#blur_light_moon);" in
+      let delta = (1. -. proportion) *. pixel_stud /. 2. in
+      let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
+      let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
+      let middlex = (coordx +. coordx') /. 2. in
+      let middley = (coordy +. coordy') /. 2. in
+      let radius = pixel_stud *. proportion /. 2. in
       let cardioid =
         let path_d =
           let radiusa = radius *. 1.5 in
@@ -481,11 +540,11 @@ let draw_circle_shades canvas (x, y) level ?(sub_level=Objects)
               sprintf "A %g %g 0 0 1 %g,%g" radiusb radiusb ext_coordx middley ;
               "z"
             ] in
-        createSVGElement "path" ([
+        createSVGElement "path" [
             ("d", Js.string path_d) ;
-            ("style", Js.string style_cardioid)
-          ] @ transform_rotate rotation) in
-      [moon; cardioid]
+            ("style", Js.string style)
+          ] in
+      [cardioid]
     )
 
 end
@@ -533,7 +592,8 @@ let base_plate canvas xy ?(size=(1, 1)) color =
   (* Stud proportion. *)
   let proportion = 0.57 in
   draw_circle canvas xy 0 ~sub_level:PassingThrough ~proportion ~darken:true (remove_letters color) ;
-  draw_circle canvas xy 1 ~proportion color
+  draw_circle canvas xy 1 ~proportion color ;
+  draw_side_halo canvas xy 1 ~sub_level:Lights ~proportion Dot.White
 
 let square_tile canvas xy ?(level=default_level) ?(size=(1, 1)) color =
   let level = convert_level level in
@@ -551,12 +611,13 @@ let round_tile canvas xy ?(level=default_level) ?(diameter=1) color =
     (* Adding special shades underneath the circle. *)
     let proportion = 0.57 in
     (* Note that we dropped the rotation: the light is always coming from the same direction. *)
-    draw_circle_shades canvas xy (level - 1) ~sub_level:Lights ~diameter ~proportion color
-    (* TODO: The cardioid is actually at level (level - 2). *)
+    draw_halo canvas xy (level - 1) ~sub_level:Lights ~diameter ~proportion color ;
+    draw_cardioid canvas xy (level - 2) ~sub_level:Lights ~diameter ~proportion color
   ) ;
   draw_circle canvas xy (level - 2) ~sub_level:PassingThrough ~diameter ~proportion ~rotation
     ~darken:true (remove_letters color) ;
-  draw_circle canvas xy level ~diameter ~proportion ~rotation color
+  draw_circle canvas xy level ~diameter ~proportion ~rotation color ;
+  draw_side_halo canvas xy level ~sub_level:Lights ~diameter ~proportion Dot.White
 
 let convert_direction = function
   | Dot.North -> 0.
@@ -570,11 +631,13 @@ let quarter_tile canvas xy ?(level=default_level) direction color =
     let size = (1, 1) in
     get_rotation_size xy size in
   let rotation = rotation +. convert_direction direction in
-  let rotation = rotation +. 90. in (* The function draw_quarter is drawing it West by default. *)
   let proportion = 0.95 in
   draw_quarter canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
     ~darken:true (remove_letters color) ;
   draw_quarter canvas xy level ~proportion ~rotation color
+  (* if direction = Dot.South then (
+    draw_side_halo canvas xy level ~sub_level:Lights ~diameter:2 ~proportion Dot.White
+  ) *)
 
 let half_circle_tile canvas xy ?(level=default_level) direction color =
   let level = convert_level level in
@@ -585,7 +648,9 @@ let half_circle_tile canvas xy ?(level=default_level) direction color =
   let proportion = 0.95 in
   draw_half_circle canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
     ~darken:true (remove_letters color) ;
-  draw_half_circle canvas xy level ~proportion ~rotation color
+  draw_half_circle canvas xy level ~proportion ~rotation color ;
+  if direction = Dot.South || direction = Dot.West then
+    draw_side_halo canvas xy level ~sub_level:Lights ~proportion Dot.White
 
 end
 
