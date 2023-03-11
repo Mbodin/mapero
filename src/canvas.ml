@@ -36,9 +36,9 @@ let setSVGAttributes (elem : nodeSVG) l =
   List.iter (fun (key, value) ->
     ignore (elem##setAttributeNS namespace_SVG (Js.string key) value)) l
 
-let createSVGElement kind attributes : node =
+let createSVGElement kind attributes : nodeSVG =
   let element : nodeSVG =
-    document##createElementNS namespace_SVG (Js.string kind) in
+    Dom_svg.createElement Dom_svg.document kind in
   setSVGAttributes element attributes ;
   element
 
@@ -50,14 +50,20 @@ let rec clear_node n =
   | None -> ()
 
 
+let coerce_HTML_to_SVG (node : nodeHTML) : nodeSVG = Js.Unsafe.coerce node (* TODO *)
+let coerce_to_SVG (node : node) : nodeSVG = Js.Unsafe.coerce node (* TODO *)
+let coerce_node node : node =
+  Js.Opt.get (Dom.CoerceTo.element node) (fun () ->
+    invalid_arg "coerce_node")
+
 module IMap = Map.Make (Structures.IntOrder)
 
 (* Each levels is divided into four sublevels, each containing an SVG layer. *)
 type sub_levels = {
-  objects : node (* The main objects of this level. *) ;
-  shadows : node (* Shadows drawn directly on these objects, or any substractive light. *) ;
-  lights : node (* Additive lights added directly on these objects. *) ;
-  passing_through : node (* Objects with volume that pass through the current level. *)
+  objects : nodeSVG (* The main objects of this level. *) ;
+  shadows : nodeSVG (* Shadows drawn directly on these objects, or any substractive light. *) ;
+  lights : nodeSVG (* Additive lights added directly on these objects. *) ;
+  passing_through : nodeSVG (* Objects with volume that pass through the current level. *)
 }
 
 type sub_level_type =
@@ -67,7 +73,7 @@ type sub_level_type =
   | PassingThrough
 
 type t = {
-  svg : node (* The main svg element. *) ;
+  svg : nodeSVG (* The main svg element. *) ;
   levels : sub_levels IMap.t ref (* A group for each level. *) ;
   size : (int * int) ref (* The current size of the whole canvas. *) ;
   min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
@@ -94,9 +100,9 @@ let iter f canvas =
   done
 
 
-let init_svg () =
+let init_svg () : nodeSVG =
   let id = Js.string "map" in
-  Js.Opt.get (Dom_html.document##getElementById id) (fun () ->
+  Js.Opt.get (Js.Opt.map (Dom_html.document##getElementById id) coerce_HTML_to_SVG) (fun () ->
       (* No map found: creating one. *)
       let svg =
         createSVGElement "svg" [
@@ -315,34 +321,34 @@ module DrawBasic : sig
   We can also specify a rotation in degrees.
   Finally, the darken boolean can be specified to make the color darker.
   The accumulator is a function that gets the raw nodes being drawn. *)
-val draw_rectangle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
+val draw_rectangle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(nodeSVG -> unit) -> Dot.color -> unit
 
 (* Same, but for a circle. *)
-val draw_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
+val draw_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(nodeSVG -> unit) -> Dot.color -> unit
 
 (* Draw a quarter of a circle, with its angle at North-West. *)
-val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
+val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(nodeSVG -> unit) -> Dot.color -> unit
 
 (* Draw a shape like the LEGO half-circle of a circle, with its straight border Noth. *)
-val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(node -> unit) -> Dot.color -> unit
+val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(nodeSVG -> unit) -> Dot.color -> unit
 
 (* Draw the halo due to the surface reflection of the angle at the side of a circular dot. *)
-val draw_side_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(node -> unit) -> Dot.color -> unit
+val draw_side_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(nodeSVG -> unit) -> Dot.color -> unit
 
 (* Draw the halo that can be seen underneath a transparent circle tile.
   This halo is probably caused by the reflection of the side halo above on the bottom of the
   transparent tile. *)
-val draw_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(node -> unit) -> Dot.color -> unit
+val draw_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(nodeSVG -> unit) -> Dot.color -> unit
 
 (* Draw the cardioid due to the inner reflection of light that can be seen underneath
   a transparent circle tile. *)
-val draw_cardioid : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(node -> unit) -> Dot.color -> unit
+val draw_cardioid : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(nodeSVG -> unit) -> Dot.color -> unit
 
 (* This function is to draw shadows.
   It takes as argument two pairs of angle and distance: these correspond to the left and right
   extreme points of the shape.
   It returns an accumulator that will copy any given shape to the shadow. *)
-val draw_shadow : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?angle_left:float -> float -> ?angle_right:float -> float -> ?color:Dot.color -> (node -> unit)
+val draw_shadow : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?angle_left:float -> float -> ?angle_right:float -> float -> ?color:Dot.color -> (nodeSVG -> unit)
 
 end = struct
 
@@ -579,9 +585,10 @@ let draw_shadow canvas xy level ?(sub_level=Shadows)
     (fun (coordx, coordy) (coordx', coordy') _style ->
        [g] (* TODO *)
     ) ;
-  fun (node : node) -> (
+  fun (node : nodeSVG) -> (
     let node1 = node##cloneNode Js._true in
     let node2 = node##cloneNode Js._true in
+    let node2 = coerce_to_SVG (coerce_node node2) in
     let transform =
       Js.Opt.get
         (Js.Opt.map (node2##getAttribute (Js.string "transform")) Js.to_string)
