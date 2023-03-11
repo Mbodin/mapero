@@ -13,18 +13,23 @@ let pixel_stud_height = pixel_stud / 4
   The value may be underestimated to exagerate the effect. *)
 let distance_to_user = 200
 
+let shadow_angle = -135
+
 
 (* Some generic DOM functions *)
 
 let window = Dom_html.window
 let document = window##.document
 
-let createSVGElement kind =
-  document##createElementNS (Js.string "http://www.w3.org/2000/svg") (Js.string kind)
-
 let set_attributes elem l =
   List.iter (fun (key, value) ->
     ignore (elem##setAttribute (Js.string key) value)) l
+
+let createSVGElement kind attributes =
+  let element =
+    document##createElementNS (Js.string "http://www.w3.org/2000/svg") (Js.string kind) in
+  set_attributes element attributes ;
+  element
 
 let rec clear_node n =
   match Js.Opt.to_option n##.firstChild with
@@ -64,13 +69,13 @@ let init_svg () =
   let id = Js.string "map" in
   Js.Opt.get (Dom_html.document##getElementById id) (fun () ->
       (* No map found: creating one. *)
-      let svg = createSVGElement "svg" in
-      set_attributes svg [
+      let svg =
+        createSVGElement "svg" [
           ("width", Js.string "100%") ;
           ("height", Js.string "100%") ;
           ("xmlns", Js.string "http://www.w3.org/2000/svg") ;
           ("id", id)
-        ] ;
+        ] in
       Dom.appendChild document##.body svg ;
       svg)
 
@@ -97,7 +102,7 @@ let init on_change =
   } in
   (* Adding basic styles *)
   let style =
-    let style = createSVGElement "style" in
+    let style = createSVGElement "style" [] in
     let styles =
       let content =
         String.concat "\n\t" [
@@ -111,27 +116,57 @@ let init on_change =
   Dom.appendChild r.svg style ;
   (* Adding some filters *)
   let defs =
-    let defs = createSVGElement "defs" in
-    let blur_light_moon = createSVGElement "filter" in
-    set_attributes blur_light_moon [
-      ("id", Js.string "blur_light_moon") ;
-      ("style", Js.string "color-interpolation-filters:sRGB") ;
-      ("x", Js.string "-0.1") ;
-      ("width", Js.string "1.5") ;
-      ("y", Js.string "-0.1") ;
-      ("height", Js.string "1.5")
-    ] ;
-    let blur = createSVGElement "feGaussianBlur" in
-    set_attributes blur [
-      ("stdDeviation", Js.string "0.5") ;
-    ] ;
-    Dom.appendChild blur_light_moon blur ;
+    let defs = createSVGElement "defs" [] in
+    let blur_light_moon =
+      let filter =
+        createSVGElement "filter" [
+          ("id", Js.string "blur_light_moon") ;
+          ("style", Js.string "color-interpolation-filters:sRGB") ;
+          ("x", Js.string "-0.1") ;
+          ("width", Js.string "1.2") ;
+          ("y", Js.string "-0.1") ;
+          ("height", Js.string "1.2")
+        ] in
+      let blur =
+        createSVGElement "feGaussianBlur" [
+          ("stdDeviation", Js.string ".3") ;
+        ] in
+      Dom.appendChild filter blur ;
+      filter in
     Dom.appendChild defs blur_light_moon ;
+    let gradient_cardioid =
+      let gradient =
+        createSVGElement "linearGradient" [
+          ("id", Js.string "gradient_cardioid") ;
+          ("gradientTransform", Js.string (Printf.sprintf "rotate(%d,.5,.5)" (-shadow_angle)))
+        ] in
+      let stop1 =
+        createSVGElement "stop" [
+          ("offset", Js.string "0") ;
+          ("stop-color", Js.string "white") ;
+          ("stop-opacity", Js.string "1")
+        ] in
+      let stop1 =
+        createSVGElement "stop" [
+          ("offset", Js.string ".5") ;
+          ("stop-color", Js.string "white") ;
+          ("stop-opacity", Js.string "1")
+        ] in
+      let stop3 =
+        createSVGElement "stop" [
+          ("offset", Js.string "1") ;
+          ("stop-color", Js.string "white") ;
+          ("stop-opacity", Js.string "0")
+        ] in
+      Dom.appendChild gradient stop1 ;
+      Dom.appendChild gradient stop2 ;
+      Dom.appendChild gradient stop3 ;
+      gradient in
+    Dom.appendChild defs gradient_cardioid ;
     defs in
   Dom.appendChild r.svg defs ;
   (* Creating a level 0 *)
-  let g = createSVGElement "g" in
-  set_attributes g [("id", Js.string "level-0")] ;
+  let g = createSVGElement "g" [("id", Js.string "level-0")] in
   Dom.appendChild r.svg g ;
   r.levels := IMap.add 0 g !(r.levels) ;
   let on_change _ =
@@ -177,8 +212,7 @@ let get_level canvas level =
       (* Creating all previous levels and adding them before the current level. *)
       ignore (aux (level - 1)) ;
       (* Adding the current level. *)
-      let g = createSVGElement "g" in
-      set_attributes g [("id", Js.string (Printf.sprintf "level-%d" level))] ;
+      let g = createSVGElement "g" [("id", Js.string (Printf.sprintf "level-%d" level))] in
       Dom.insertBefore canvas.svg g Js.Opt.empty ;
       canvas.levels := IMap.add level g !(canvas.levels) ;
       g in
@@ -269,13 +303,13 @@ let draw_figure canvas (x, y) level ?(size=(1, 1)) ?(rotation=0.) ?(darken=false
   (* Dealing with special cases. *)
   match color with
   | Letter c ->
-    let element = createSVGElement "text" in
     let (coordx, coordy) = coord in
     let (coordx', coordy') = coord' in
-    set_attributes element ([
-        ("x", print_float ((coordx +. coordx') /. 2.)) ;
-        ("y", print_float ((coordy +. coordy') /. 2.))
-      ] @ transform_rotate rotation) ;
+    let element =
+      createSVGElement "text" ([
+          ("x", print_float ((coordx +. coordx') /. 2.)) ;
+          ("y", print_float ((coordy +. coordy') /. 2.))
+        ] @ transform_rotate rotation) in
     let text = document##createTextNode (Js.string c) in
     Dom.appendChild element text ;
     Dom.appendChild level element
@@ -288,15 +322,15 @@ let draw_rectangle canvas (x, y) level
     ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
   draw_figure canvas (x, y) level ~size ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
-      let rect = createSVGElement "rect" in
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
-      set_attributes rect ([
-          ("x", print_float (coordx +. delta)) ;
-          ("y", print_float (coordy +. delta)) ;
-          ("width", print_float ((coordx' -. coordx) *. proportion)) ;
-          ("height", print_float ((coordy' -. coordy) *. proportion)) ;
-          ("style", Js.string style)
-        ] @ transform_rotate rotation) ;
+      let rect =
+        createSVGElement "rect" ([
+            ("x", print_float (coordx +. delta)) ;
+            ("y", print_float (coordy +. delta)) ;
+            ("width", print_float ((coordx' -. coordx) *. proportion)) ;
+            ("height", print_float ((coordy' -. coordy) *. proportion)) ;
+            ("style", Js.string style)
+          ] @ transform_rotate rotation) in
       [rect]
     )
 
@@ -304,14 +338,14 @@ let draw_circle canvas (x, y) level
     ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false) color =
   draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~darken color
     (fun (coordx, coordy) (coordx', coordy') style ->
-      let circle = createSVGElement "circle" in
       let radius = pixel_stud *. Float.of_int diameter /. 2. in
-      set_attributes circle ([
-          ("cx", print_float ((coordx +. coordx') /. 2.)) ;
-          ("cy", print_float ((coordy +. coordy') /. 2.)) ;
-          ("r", print_float (radius *. proportion)) ;
-          ("style", Js.string style)
-        ] @ transform_rotate rotation) ;
+      let circle =
+        createSVGElement "circle" ([
+            ("cx", print_float ((coordx +. coordx') /. 2.)) ;
+            ("cy", print_float ((coordy +. coordy') /. 2.)) ;
+            ("r", print_float (radius *. proportion)) ;
+            ("style", Js.string style)
+          ] @ transform_rotate rotation) in
       [circle]
     )
 
@@ -323,18 +357,18 @@ let draw_quarter canvas (x, y) level
       let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
       let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
       let radius = pixel_stud *. proportion in
-      let path = createSVGElement "path" in
-      let path_d =
-        String.concat " " Printf.[
-            sprintf "M %g,%g" coordx coordy ;
-            sprintf "L %g,%g" coordx' coordy ;
-            sprintf "A %g,%g 0 0 1 %g,%g" radius radius coordx coordy' ;
-            "z"
-          ] in
-      set_attributes path ([
-          ("d", Js.string path_d) ;
-          ("style", Js.string style)
-        ] @ transform_rotate rotation) ;
+      let path =
+        let path_d =
+          String.concat " " Printf.[
+              sprintf "M %g,%g" coordx coordy ;
+              sprintf "L %g,%g" coordx' coordy ;
+              sprintf "A %g %g 0 0 1 %g,%g" radius radius coordx coordy' ;
+              "z"
+            ] in
+        createSVGElement "path" ([
+            ("d", Js.string path_d) ;
+            ("style", Js.string style)
+          ] @ transform_rotate rotation) in
       [path]
     )
 
@@ -347,19 +381,19 @@ let draw_half_circle canvas (x, y) level
       let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
       let middley = (coordy +. coordy') /. 2. in
       let radius = pixel_stud *. proportion /. 2. in
-      let path = createSVGElement "path" in
-      let path_d =
-        String.concat " " Printf.[
-            sprintf "M %g,%g" coordx coordy ;
-            sprintf "L %g,%g" coordx' coordy ;
-            sprintf "L %g,%g" coordx' middley ;
-            sprintf "A %g,%g 0 0 1 %g,%g" radius radius coordx middley ;
-            "z"
-          ] in
-      set_attributes path ([
-          ("d", Js.string path_d) ;
-          ("style", Js.string style)
-        ] @ transform_rotate rotation) ;
+      let path =
+        let path_d =
+          String.concat " " Printf.[
+              sprintf "M %g,%g" coordx coordy ;
+              sprintf "L %g,%g" coordx' coordy ;
+              sprintf "L %g,%g" coordx' middley ;
+              sprintf "A %g %g 0 0 1 %g,%g" radius radius coordx middley ;
+              "z"
+            ] in
+        createSVGElement "path" ([
+            ("d", Js.string path_d) ;
+            ("style", Js.string style)
+          ] @ transform_rotate rotation) in
       [path]
     )
 
@@ -368,47 +402,47 @@ let draw_circle_shades canvas (x, y) level
   draw_figure canvas (x, y) level ~size:(diameter, diameter) ~rotation ~lighten:true color
     (fun (coordx, coordy) (coordx', coordy') _style ->
       let style_blur = "fill:white; fill-opacity:.5; filter:url(#blur_light_moon);" in
-      let style_ext = "fill:white; fill-opacity:.5; filter:url(#blur_light_moon);" in
+      let style_cardioid = "fill:url(#gradient_cardioid); fill-opacity:.5; filter:url(#blur_light_moon);" in
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
       let (coordx', coordy') = (coordx' -. delta, coordy' -. delta) in
       let middlex = (coordx +. coordx') /. 2. in
       let middley = (coordy +. coordy') /. 2. in
       let radius = pixel_stud *. proportion /. 2. in
-      let moon = createSVGElement "path" in
-      let path_d =
-        let larger_radius = radius *. 1.5 in
-        String.concat " " Printf.[
-            sprintf "M %g,%g" middlex coordy ;
-            sprintf "A %g,%g 0 0 1 %g,%g" radius radius coordx' middley ;
-            sprintf "A %g,%g 0 0 0 %g,%g" larger_radius larger_radius middlex coordy ;
-            "z"
-          ] in
-      set_attributes moon ([
-          ("d", Js.string path_d) ;
-          ("style", Js.string style_blur)
-        ] @ transform_rotate rotation) ;
-      let triangle = createSVGElement "path" in
-      let path_d =
-        let radiusa = radius *. 1.5 in
-        let radiusb = radius *. 2. in
-        let ext = radius *. 0.5 in
-        let ext_coordx = coordx -. ext in
-        let ext_coordy' = coordy' +. ext in
-        let pausex = middlex -. radius /. sqrt 2. in
-        let pausey = middley +. radius /. sqrt 2. in
-        String.concat " " Printf.[
-            sprintf "M %g,%g" ext_coordx middley ;
-            sprintf "A %g,%g 0 0 0 %g,%g" radiusa radiusa pausex pausey ;
-            sprintf "A %g,%g 0 0 0 %g,%g" radiusa radiusa middlex ext_coordy' ;
-            sprintf "A %g,%g 0 0 1 %g,%g" radiusb radiusb ext_coordx middley ;
-            "z"
-          ] in
-      set_attributes triangle ([
-          ("d", Js.string path_d) ;
-          ("style", Js.string style_ext)
-        ] @ transform_rotate rotation) ;
-      [moon; triangle]
+      let moon =
+        let path_d =
+          let larger_radius = radius *. 1.5 in
+          String.concat " " Printf.[
+              sprintf "M %g,%g" middlex coordy ;
+              sprintf "A %g %g 0 0 1 %g,%g" radius radius coordx' middley ;
+              sprintf "A %g %g 0 0 0 %g,%g" larger_radius larger_radius middlex coordy ;
+              "z"
+            ] in
+        createSVGElement "path" ([
+            ("d", Js.string path_d) ;
+            ("style", Js.string style_blur)
+          ] @ transform_rotate rotation) in
+      let cardioid =
+        let path_d =
+          let radiusa = radius *. 1.5 in
+          let radiusb = radius *. 2. in
+          let ext = radius *. 0.5 in
+          let ext_coordx = coordx -. ext in
+          let ext_coordy' = coordy' +. ext in
+          let pausex = middlex -. radius /. sqrt 2. in
+          let pausey = middley +. radius /. sqrt 2. in
+          String.concat " " Printf.[
+              sprintf "M %g,%g" ext_coordx middley ;
+              sprintf "A %g %g 0 0 0 %g,%g" radiusa radiusa pausex pausey ;
+              sprintf "A %g %g 0 0 0 %g,%g" radiusa radiusa middlex ext_coordy' ;
+              sprintf "A %g %g 0 0 1 %g,%g" radiusb radiusb ext_coordx middley ;
+              "z"
+            ] in
+        createSVGElement "path" ([
+            ("d", Js.string path_d) ;
+            ("style", Js.string style_cardioid)
+          ] @ transform_rotate rotation) in
+      [moon; cardioid]
     )
 
 end

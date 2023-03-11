@@ -5,6 +5,7 @@
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    id="svg8"
@@ -28,14 +29,26 @@
      id="namedview9"
      showgrid="false"
      inkscape:zoom="1.7350885"
-     inkscape:cx="0.75177209"
-     inkscape:cy="160.73979"
+     inkscape:cx="-111.9226"
+     inkscape:cy="159.58711"
      inkscape:window-x="72"
      inkscape:window-y="27"
      inkscape:window-maximized="1"
      inkscape:current-layer="g838" />
   <defs
      id="defs2">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient821">
+      <stop
+         style="stop-color:#ff8080;stop-opacity:1;"
+         offset="0"
+         id="stop817" />
+      <stop
+         style="stop-color:#ff8080;stop-opacity:0;"
+         offset="1"
+         id="stop819" />
+    </linearGradient>
     <filter
        inkscape:collect="always"
        style="color-interpolation-filters:sRGB"
@@ -49,6 +62,15 @@
          stdDeviation="0.5"
          id="feGaussianBlur865" />
     </filter>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient821"
+       id="linearGradient823"
+       x1="417.66367"
+       y1="171.88988"
+       x2="406.37515"
+       y2="181.43396"
+       gradientUnits="userSpaceOnUse" />
   </defs>
   <metadata
      id="metadata5">
@@ -70,7 +92,7 @@
        id="g838"
        style="fill:#ff8080">
       <path
-         style="fill:#ff8080;stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         style="fill:url(#linearGradient823);stroke:#000000;stroke-width:0.26458332px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;fill-opacity:1"
          d="m 436.94048,203.2619 c -26.1429,-11.01754 -39.16619,-32.6793 -46.49108,-58.96428 5.94028,11.07827 13.93687,18.66589 27.21428,27.59226 5.32639,14.58969 8.90967,22.65611 19.2768,31.37202 z"
          id="path832" />
       <path
