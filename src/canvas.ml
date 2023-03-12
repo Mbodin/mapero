@@ -1,6 +1,7 @@
 
 open Js_of_ocaml
 open Tyxml
+open Js_of_ocaml_tyxml
 
 
 (* Size in pixel of a single LEGO cell. *)
@@ -19,22 +20,28 @@ let shadow_distance = Float.of_int pixel_stud /. 2.5
 (* Some generic DOM functions *)
 
 let window = Dom_html.window
-let document = window##.document
 
+module To_dom = Tyxml_cast.MakeTo (struct
+  type 'a elt = 'a Tyxml_js.Svg.elt
+  let elt = Tyxml_js.Svg.toelt
+end)
 
-type node = Dom.element Js.t
-type nodeHTML = Dom_html.element Js.t
-type nodeSVG = Dom_svg.element Js.t
+type element = Dom_svg.element Js.t
 
-let setAttributes elem l =
+(* Converting a Tyxml object to an element.
+  Theorically, it is possible to get a non-element node (text, comments, etc.),
+  but we won't generate any isolated such node in this file. *)
+let to_element repr : element =
+  let node = To_dom.of_node repr in
+  Js.Opt.get (Dom_svg.CoerceTo.element node) (fun () -> assert false)
+
+let setAttributes (elem : element) l =
   List.iter (fun (key, value) ->
-    ignore (elem##setAttribute (Js.string key) value)) l
+    elem##setAttribute (Js.string key) value) l
 
-let namespace_SVG = Js.string "http://www.w3.org/2000/svg"
-
-let setSVGAttributes (elem : nodeSVG) l =
-  List.iter (fun (key, value) ->
-    ignore (elem##setAttributeNS namespace_SVG (Js.string key) value)) l
+let append_to (elem : element) (new_child : _ Tyxml.Svg.elt) =
+  let new_child = to_element new_child in
+  Dom_svg.appendChild elem new_child
 
 let createSVGElement kind attributes : nodeSVG =
   let element : nodeSVG =
@@ -101,17 +108,18 @@ let iter f canvas =
 
 
 let init_svg () : nodeSVG =
-  let id = Js.string "map" in
-  Js.Opt.get (Js.Opt.map (Dom_html.document##getElementById id) coerce_HTML_to_SVG) (fun () ->
+  let id = "map" in
+  Js.Opt.get (Js.Opt.map (Dom_html.document##getElementById (Js.string id)) coerce_HTML_to_SVG) (fun () ->
       (* No map found: creating one. *)
-      let svg =
-        createSVGElement "svg" [
+      let%svg svg =
+        "<svg width='100%' height='100%' id="id"></svg>"
+        (*createSVGElement "svg" [
           ("width", Js.string "100%") ;
           ("height", Js.string "100%") ;
           ("xmlns", Js.string "http://www.w3.org/2000/svg") ;
           ("id", id)
-        ] in
-      Dom.appendChild document##.body svg ;
+        ]*) in
+      Dom.appendChild Dom_html.document##.body svg ;
       svg)
 
 let window_x, window_y =
@@ -155,7 +163,7 @@ let init on_change =
           "text { font-family: \"Noto\", sans-serif; font-weight: bold;"
           ^ " text-anchor: middle; dominant-baseline: central; }"
         ] in
-      document##createTextNode (Js.string content) in
+      Dom_svg.document##createTextNode (Js.string content) in
     Dom.appendChild style styles ;
     style in
   Dom.appendChild r.svg style ;
@@ -395,7 +403,7 @@ let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
           ("x", print_float ((coordx +. coordx') /. 2.)) ;
           ("y", print_float ((coordy +. coordy') /. 2.))
         ] @ transform_rotate rotation) in
-    let text = document##createTextNode (Js.string c) in
+    let text = Dom_svg.document##createTextNode (Js.string c) in
     Dom.appendChild element text ;
     Dom.appendChild level element
   | Satin_trans_clear ->

@@ -23,6 +23,7 @@
 		"@opam/js_of_ocaml-ppx_deriving_json": "*",
 		"@opam/tyxml": "*",
 		"@opam/tyxml-ppx": "*",
+		"@opam/js_of_ocaml-tyxml": "*",
 		"ocaml": "~4.14"
 	}
 }

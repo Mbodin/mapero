@@ -1,6 +1,6 @@
 (executable
 	(name main)
-	(libraries lwt js_of_ocaml-lwt tyxml)
+	(libraries lwt js_of_ocaml-lwt tyxml js_of_ocaml-tyxml)
 	(preprocess (pps lwt_ppx js_of_ocaml-ppx tyxml-ppx))
 	(modules_without_implementation structuresSig dot overpass)
 	(modes js))
