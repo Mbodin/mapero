@@ -15,11 +15,14 @@
 	},
 	"dependencies": {
 		"@opam/dune": ">=2.7",
+		"@opam/ocamlfind": "1.9.5",
 		"@opam/lwt_ppx": "*",
 		"@opam/js_of_ocaml": "~4.1",
 		"@opam/js_of_ocaml-lwt": "*",
 		"@opam/js_of_ocaml-ppx": "*",
 		"@opam/js_of_ocaml-ppx_deriving_json": "*",
+		"@opam/tyxml": "*",
+		"@opam/tyxml-ppx": "*",
 		"ocaml": "~4.14"
 	}
 }

@@ -1,6 +1,6 @@
 
 open Js_of_ocaml
-open Js_of_ocaml_lwt
+open Tyxml
 
 
 (* Size in pixel of a single LEGO cell. *)

@@ -22,7 +22,7 @@ esy
 ## Using `opam`
 
 ```bash
-opam install dune lwt_ppx js_of_ocaml js_of_ocaml-ppx js_of_ocaml-lwt
+opam install dune lwt_ppx js_of_ocaml js_of_ocaml-ppx js_of_ocaml-lwt tyxml tyxml-ppx
 dune build
 ```
 
