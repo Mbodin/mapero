@@ -26,12 +26,21 @@ module To_dom = Tyxml_cast.MakeTo (struct
   let elt = Tyxml_js.Svg.toelt
 end)
 
+module Build = Tyxml_js.Svg
+
+(* We differenciate two different types for SVG elements:
+  the first one, element, is a direct pointer to an element in the DOM.
+  The second one is a Tyxml representation that can be safely copied,
+  and converted to an actual element. *)
 type element = Dom_svg.element Js.t
+type element_repr = Svg_types.g_content Tyxml_js.Svg.elt (* FIXME: Or Tyxml_svg.elt? *)
+
+(*FIXME: let namespace_SVG = Js.string "http://www.w3.org/2000/svg"*)
 
 (* Converting a Tyxml object to an element.
   Theorically, it is possible to get a non-element node (text, comments, etc.),
-  but we won't generate any isolated such node in this file. *)
-let to_element repr : element =
+  but we won't generate any isolated such nodes in this file. *)
+let to_element (repr : element_repr) : element =
   let node = To_dom.of_node repr in
   Js.Opt.get (Dom_svg.CoerceTo.element node) (fun () -> assert false)
 
@@ -39,15 +48,20 @@ let setAttributes (elem : element) l =
   List.iter (fun (key, value) ->
     elem##setAttribute (Js.string key) value) l
 
-let append_to (elem : element) (new_child : _ Tyxml.Svg.elt) =
+(* Convert a representation to an element and add it to the DOM at a specific place. *)
+let build_append_to elem (new_child : element_repr) =
   let new_child = to_element new_child in
-  Dom_svg.appendChild elem new_child
+  Dom.appendChild elem new_child ;
+  new_child
 
-let createSVGElement kind attributes : nodeSVG =
+let append_to elem new_child =
+  ignore (build_append_to elem new_child)
+
+(*let createSVGElement kind attributes : nodeSVG =
   let element : nodeSVG =
     Dom_svg.createElement Dom_svg.document kind in
   setSVGAttributes element attributes ;
-  element
+  element*)
 
 let rec clear_node n =
   match Js.Opt.to_option n##.firstChild with
@@ -57,20 +71,20 @@ let rec clear_node n =
   | None -> ()
 
 
-let coerce_HTML_to_SVG (node : nodeHTML) : nodeSVG = Js.Unsafe.coerce node (* TODO *)
+(*let coerce_HTML_to_SVG (node : nodeHTML) : nodeSVG = Js.Unsafe.coerce node (* TODO *)
 let coerce_to_SVG (node : node) : nodeSVG = Js.Unsafe.coerce node (* TODO *)
 let coerce_node node : node =
   Js.Opt.get (Dom.CoerceTo.element node) (fun () ->
-    invalid_arg "coerce_node")
+    invalid_arg "coerce_node")*)
 
 module IMap = Map.Make (Structures.IntOrder)
 
 (* Each levels is divided into four sublevels, each containing an SVG layer. *)
 type sub_levels = {
-  objects : nodeSVG (* The main objects of this level. *) ;
-  shadows : nodeSVG (* Shadows drawn directly on these objects, or any substractive light. *) ;
-  lights : nodeSVG (* Additive lights added directly on these objects. *) ;
-  passing_through : nodeSVG (* Objects with volume that pass through the current level. *)
+  objects : element (* The main objects of this level. *) ;
+  shadows : element (* Shadows drawn directly on these objects, or any substractive light. *) ;
+  lights : element (* Additive lights added directly on these objects. *) ;
+  passing_through : element (* Objects with volume that pass through the current level. *)
 }
 
 type sub_level_type =
@@ -80,7 +94,7 @@ type sub_level_type =
   | PassingThrough
 
 type t = {
-  svg : nodeSVG (* The main svg element. *) ;
+  svg : element (* The main svg element. *) ;
   levels : sub_levels IMap.t ref (* A group for each level. *) ;
   size : (int * int) ref (* The current size of the whole canvas. *) ;
   min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
@@ -107,28 +121,24 @@ let iter f canvas =
   done
 
 
-let init_svg () : nodeSVG =
+let init_svg () : element =
   let id = "map" in
-  Js.Opt.get (Js.Opt.map (Dom_html.document##getElementById (Js.string id)) coerce_HTML_to_SVG) (fun () ->
+  Js.Opt.get (Dom_svg.document##getElementById (Js.string id)) (fun () ->
       (* No map found: creating one. *)
-      let%svg svg =
-        "<svg width='100%' height='100%' id="id"></svg>"
-        (*createSVGElement "svg" [
-          ("width", Js.string "100%") ;
-          ("height", Js.string "100%") ;
-          ("xmlns", Js.string "http://www.w3.org/2000/svg") ;
-          ("id", id)
-        ]*) in
-      Dom.appendChild Dom_html.document##.body svg ;
-      svg)
+      let full = (100., Some `Percent) in
+      build_append_to Dom_html.document##.body
+        Build.(svg ~a:[a_width full; a_height full; a_id id] []))
 
 let window_x, window_y =
   (fun _ -> window##.innerWidth),
   (fun _ -> window##.innerHeight)
 
-let create_sub_levels level =
+let create_sub_levels add level =
   let create name =
-    createSVGElement "g" [("id", Js.string (Printf.sprintf "%s-%d" name level))]
+    let g = Build.(g ~a:[a_id (Printf.sprintf "%s-%d" name level)] []) in
+    let g = to_element g in
+    add g ;
+    g
   in {
     objects = create "level" ;
     shadows = create "shadows" ;
@@ -154,76 +164,52 @@ let init on_change =
     min_coord = min_coord
   } in
   (* Adding basic styles *)
-  let style =
-    let style = createSVGElement "style" [] in
-    let styles =
+  append_to r.svg Build.(
       let content =
         String.concat "\n\t" [
           "* { transform-origin: center; transform-box: fill-box; }" ;
           "text { font-family: \"Noto\", sans-serif; font-weight: bold;"
           ^ " text-anchor: middle; dominant-baseline: central; }"
         ] in
-      Dom_svg.document##createTextNode (Js.string content) in
-    Dom.appendChild style styles ;
-    style in
-  Dom.appendChild r.svg style ;
+      style (pcdata content)
+    ) ;
   (* Adding some filters *)
-  let defs =
-    let defs = createSVGElement "defs" [] in
-    let blur_light_moon =
-      let filter =
-        createSVGElement "filter" [
-          ("id", Js.string "blur_light_moon") ;
-          ("style", Js.string "color-interpolation-filters:sRGB") ;
-          ("x", Js.string "-0.1") ;
-          ("width", Js.string "1.2") ;
-          ("y", Js.string "-0.1") ;
-          ("height", Js.string "1.2")
-        ] in
-      let blur =
-        createSVGElement "feGaussianBlur" [
-          ("stdDeviation", Js.string ".3") ;
-        ] in
-      Dom.appendChild filter blur ;
-      filter in
-    Dom.appendChild defs blur_light_moon ;
-    let gradient_cardioid =
-      let gradient =
-        createSVGElement "linearGradient" [
-          ("id", Js.string "gradient_cardioid") ;
-          ("gradientTransform", Js.string (Printf.sprintf "rotate(%g,.5,.5)" shadow_angle))
-        ] in
-      let stop1 =
-        createSVGElement "stop" [
-          ("offset", Js.string "0") ;
-          ("stop-color", Js.string "white") ;
-          ("stop-opacity", Js.string "1")
-        ] in
-      let stop2 =
-        createSVGElement "stop" [
-          ("offset", Js.string ".5") ;
-          ("stop-color", Js.string "white") ;
-          ("stop-opacity", Js.string "1")
-        ] in
-      let stop3 =
-        createSVGElement "stop" [
-          ("offset", Js.string "1") ;
-          ("stop-color", Js.string "white") ;
-          ("stop-opacity", Js.string "0")
-        ] in
-      Dom.appendChild gradient stop1 ;
-      Dom.appendChild gradient stop2 ;
-      Dom.appendChild gradient stop3 ;
-      gradient in
-    Dom.appendChild defs gradient_cardioid ;
-    defs in
-  Dom.appendChild r.svg defs ;
+  append_to r.svg Build.(
+      defs [
+        filter ~a:[
+          a_id "blur_light_moon" ;
+          a_style "color-interpolation-filters:sRGB" ;
+          a_x (-0.1, None) ;
+          a_width (1.2, None) ;
+          a_y (-0.1, None) ;
+          a_height (1.2, None)
+        ] [
+          feGaussianBlur ~a:[a_stdDeviation (0.3, None)] []
+        ] ;
+        linearGradient ~a:[
+          a_id "gradient_cardioid" ;
+          a_gradientTransform [`Rotate ((shadow_angle, Some `Deg), Some (0.5, 0.5))]
+        ] [
+          stop ~a:[
+            a_offset 0 ;
+            a_stop-color "white" ;
+            a_stop-opacity 1
+          ] ;
+          stop ~a:[
+            a_offset 0 ;
+            a_stop-color "white" ;
+            a_stop-opacity 1
+          ] ;
+          stop ~a:[
+            a_offset 1 ;
+            a_stop-color "white" ;
+            a_stop-opacity 0
+          ]
+        ]
+      ]
+    ) ;
   (* Creating a level 0 *)
-  let sub_level = create_sub_levels 0 in
-  Dom.appendChild r.svg sub_level.objects ;
-  Dom.appendChild r.svg sub_level.shadows ;
-  Dom.appendChild r.svg sub_level.lights ;
-  Dom.appendChild r.svg sub_level.passing_through ;
+  let sub_level = create_sub_levels (Dom.appendChild r.svg) 0 in
   r.levels := IMap.add 0 sub_level !(r.levels) ;
   let on_change _ =
     update_xy () ;
@@ -273,11 +259,9 @@ let get_level canvas ?(sub_level=Objects) level =
       (* Creating all previous levels and adding them before the current level. *)
       ignore (aux (level - 1)) ;
       (* Adding the current level. *)
-      let sub_level = create_sub_levels level in
-      Dom.insertBefore canvas.svg sub_level.objects Js.Opt.empty ;
-      Dom.insertBefore canvas.svg sub_level.shadows Js.Opt.empty ;
-      Dom.insertBefore canvas.svg sub_level.lights Js.Opt.empty ;
-      Dom.insertBefore canvas.svg sub_level.passing_through Js.Opt.empty ;
+      let sub_level =
+        create_sub_levels (fun g ->
+            Dom.insertBefore canvas.svg g Js.Opt.empty) level in
       canvas.levels := IMap.add level sub_level !(canvas.levels) ;
       sub_level in
   let sub_levels = aux level in
