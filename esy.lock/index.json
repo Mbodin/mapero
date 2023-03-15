@@ -1,5 +1,5 @@
 {
-  "checksum": "fa0d8a73054248054006177b88fd76a7",
+  "checksum": "bb2ed7f383d5f800c59a52adfe709d2b",
   "root": "mapero@link-dev:./package.json",
   "node": {
     "ocaml@4.14.0@d41d8cd9": {
@@ -27,8 +27,7 @@
       },
       "overrides": [],
       "dependencies": [
-        "ocaml@4.14.0@d41d8cd9",
-        "@opam/tyxml-ppx@github:Mbodin/tyxml#9d58025d024a9d474a807b1a86e2df8b4ba687af@7ffd0e13",
+        "ocaml@4.14.0@d41d8cd9", "@opam/tyxml-ppx@opam:4.5.0@984a4965",
         "@opam/tyxml@opam:4.5.0@0a609297",
         "@opam/ocamlfind@opam:1.9.5@e83abf74",
         "@opam/lwt_ppx@opam:2.1.0@f0dd3e73",
@@ -150,42 +149,36 @@
         "@opam/dune@opam:3.7.0@95218dc4"
       ]
     },
-    "@opam/tyxml-ppx@github:Mbodin/tyxml#9d58025d024a9d474a807b1a86e2df8b4ba687af@7ffd0e13": {
-      "id":
-        "@opam/tyxml-ppx@github:Mbodin/tyxml#9d58025d024a9d474a807b1a86e2df8b4ba687af@7ffd0e13",
+    "@opam/tyxml-ppx@opam:4.5.0@984a4965": {
+      "id": "@opam/tyxml-ppx@opam:4.5.0@984a4965",
       "name": "@opam/tyxml-ppx",
-      "version":
-        "github:Mbodin/tyxml#9d58025d024a9d474a807b1a86e2df8b4ba687af",
+      "version": "opam:4.5.0",
       "source": {
         "type": "install",
         "source": [
-          "github:Mbodin/tyxml#9d58025d024a9d474a807b1a86e2df8b4ba687af"
-        ]
-      },
-      "overrides": [
-        {
-          "dependencies": {
-            "@opam/dune": ">=2.7",
-            "@opam/ocaml": "~4.14",
-            "@opam/tyxml": "*",
-            "@opam/tyxml-syntax": "*",
-            "@opam/markup": ">=0.7.2",
-            "@opam/ppxlib": ">=0.18"
-          },
-          "build": [
-            [ "dune", "subst" ],
-            [ "dune", "build", "-p", "tyxml-ppx", "@install" ]
-          ]
+          "archive:https://opam.ocaml.org/cache/sha256/c6/c69accef5df4dd89d38f6aa0baad01e8fda4e9e98bb7dad61bec1452c5716068#sha256:c69accef5df4dd89d38f6aa0baad01e8fda4e9e98bb7dad61bec1452c5716068",
+          "archive:https://github.com/ocsigen/tyxml/releases/download/4.5.0/tyxml-4.5.0.tbz#sha256:c69accef5df4dd89d38f6aa0baad01e8fda4e9e98bb7dad61bec1452c5716068"
+        ],
+        "opam": {
+          "name": "tyxml-ppx",
+          "version": "4.5.0",
+          "path": "esy.lock/opam/tyxml-ppx.4.5.0"
         }
-      ],
+      },
+      "overrides": [],
       "dependencies": [
-        "@opam/tyxml-syntax@opam:4.5.0@8788f654",
+        "ocaml@4.14.0@d41d8cd9", "@opam/tyxml-syntax@opam:4.5.0@8788f654",
         "@opam/tyxml@opam:4.5.0@0a609297",
         "@opam/ppxlib@opam:0.29.1@8414c948",
-        "@opam/ocaml@opam:4.14.1@5cb2d55a",
-        "@opam/markup@opam:1.0.3@a58eeeba", "@opam/dune@opam:3.7.0@95218dc4"
+        "@opam/markup@opam:1.0.3@a58eeeba", "@opam/dune@opam:3.7.0@95218dc4",
+        "@esy-ocaml/substs@0.0.1@d41d8cd9"
       ],
-      "devDependencies": []
+      "devDependencies": [
+        "ocaml@4.14.0@d41d8cd9", "@opam/tyxml-syntax@opam:4.5.0@8788f654",
+        "@opam/tyxml@opam:4.5.0@0a609297",
+        "@opam/ppxlib@opam:0.29.1@8414c948",
+        "@opam/markup@opam:1.0.3@a58eeeba", "@opam/dune@opam:3.7.0@95218dc4"
+      ]
     },
     "@opam/tyxml@opam:4.5.0@0a609297": {
       "id": "@opam/tyxml@opam:4.5.0@0a609297",
@@ -526,26 +519,6 @@
       ],
       "devDependencies": [ "ocaml@4.14.0@d41d8cd9" ]
     },
-    "@opam/ocaml-config@opam:3@5e896530": {
-      "id": "@opam/ocaml-config@opam:3@5e896530",
-      "name": "@opam/ocaml-config",
-      "version": "opam:3",
-      "source": {
-        "type": "install",
-        "source": [ "no-source:" ],
-        "opam": {
-          "name": "ocaml-config",
-          "version": "3",
-          "path": "esy.lock/opam/ocaml-config.3"
-        }
-      },
-      "overrides": [],
-      "dependencies": [
-        "@opam/ocaml-base-compiler@opam:4.14.1@ed7c5cf4",
-        "@esy-ocaml/substs@0.0.1@d41d8cd9"
-      ],
-      "devDependencies": [ "@opam/ocaml-base-compiler@opam:4.14.1@ed7c5cf4" ]
-    },
     "@opam/ocaml-compiler-libs@opam:v0.12.4@41979882": {
       "id": "@opam/ocaml-compiler-libs@opam:v0.12.4@41979882",
       "name": "@opam/ocaml-compiler-libs",
@@ -569,50 +542,6 @@
       ],
       "devDependencies": [
         "ocaml@4.14.0@d41d8cd9", "@opam/dune@opam:3.7.0@95218dc4"
-      ]
-    },
-    "@opam/ocaml-base-compiler@opam:4.14.1@ed7c5cf4": {
-      "id": "@opam/ocaml-base-compiler@opam:4.14.1@ed7c5cf4",
-      "name": "@opam/ocaml-base-compiler",
-      "version": "opam:4.14.1",
-      "source": {
-        "type": "install",
-        "source": [
-          "archive:https://opam.ocaml.org/cache/sha256/77/776006e6f0b9bcfb6d9d74381c588e587432ca85562fde93bb80472a5145b028#sha256:776006e6f0b9bcfb6d9d74381c588e587432ca85562fde93bb80472a5145b028",
-          "archive:https://github.com/ocaml/ocaml/archive/4.14.1.tar.gz#sha256:776006e6f0b9bcfb6d9d74381c588e587432ca85562fde93bb80472a5145b028"
-        ],
-        "opam": {
-          "name": "ocaml-base-compiler",
-          "version": "4.14.1",
-          "path": "esy.lock/opam/ocaml-base-compiler.4.14.1"
-        }
-      },
-      "overrides": [],
-      "dependencies": [ "@esy-ocaml/substs@0.0.1@d41d8cd9" ],
-      "devDependencies": []
-    },
-    "@opam/ocaml@opam:4.14.1@5cb2d55a": {
-      "id": "@opam/ocaml@opam:4.14.1@5cb2d55a",
-      "name": "@opam/ocaml",
-      "version": "opam:4.14.1",
-      "source": {
-        "type": "install",
-        "source": [ "no-source:" ],
-        "opam": {
-          "name": "ocaml",
-          "version": "4.14.1",
-          "path": "esy.lock/opam/ocaml.4.14.1"
-        }
-      },
-      "overrides": [],
-      "dependencies": [
-        "@opam/ocaml-config@opam:3@5e896530",
-        "@opam/ocaml-base-compiler@opam:4.14.1@ed7c5cf4",
-        "@esy-ocaml/substs@0.0.1@d41d8cd9"
-      ],
-      "devDependencies": [
-        "@opam/ocaml-config@opam:3@5e896530",
-        "@opam/ocaml-base-compiler@opam:4.14.1@ed7c5cf4"
       ]
     },
     "@opam/menhirSdk@opam:20220210@fe146ed3": {

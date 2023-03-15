@@ -25,26 +25,6 @@
 		"@opam/tyxml-ppx": "*",
 		"@opam/js_of_ocaml-tyxml": "*",
 		"ocaml": "~4.14"
-	},
-	"devDependencies": {},
-	"resolutions": {
-		"@opam/tyxml-ppx": {
-			"source": "github:Mbodin/tyxml#9d58025d024a9d474a807b1a86e2df8b4ba687af",
-			"override": {
-				"dependencies": {
-					"@opam/dune": ">=2.7",
-					"@opam/ocaml": "~4.14",
-					"@opam/tyxml": "*",
-					"@opam/tyxml-syntax": "*",
-					"@opam/markup": ">=0.7.2",
-					"@opam/ppxlib": ">=0.18"
-				},
-				"build": [
-					[ "dune", "subst" ],
-					[ "dune", "build", "-p", "tyxml-ppx", "@install" ]
-				]
-			}
-		}
 	}
 }
 
