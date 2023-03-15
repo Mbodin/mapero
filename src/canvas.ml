@@ -127,12 +127,17 @@ let create_sub_levels add level =
     let%svg g = "<g id="id"></g>" in
     let g = to_element g in
     add g ;
-    g
-  in {
-    objects = create "level" ;
-    shadows = create "shadows" ;
-    lights = create "lights" ;
-    passing_through = create "volumes"
+    g in
+  (* Due to side-effects, the order is important there. *)
+  let objects = create "level" in
+  let shadows = create "shadows" in
+  let lights = create "lights" in
+  let passing_through = create "volumes" in
+  {
+    objects ;
+    shadows ;
+    lights ;
+    passing_through
   }
 
 let init on_change =
@@ -175,7 +180,7 @@ let init on_change =
         Svg.[linearGradient ~a:[
             a_id "gradient_cardioid" ;
             (* FIXME: I'm adding this Obj.magic to circumvent this silly issue: https://github.com/ocsigen/tyxml/pull/314 *)
-            (Obj.magic (a_gradientTransform [`Rotate ((shadow_angle, Some `Deg), Some (0.5, 0.5))]))
+            (Obj.magic (a_gradientTransform [`Rotate ((shadow_angle, None), Some (0.5, 0.5))]))
           ] [%svg
             "<stop offset=0 stop-color='white' stop-opacity=1 />"
             "<stop offset=0.5 stop-color='white' stop-opacity=1 />"
@@ -325,7 +330,7 @@ let print_float v = Js.string (Printf.sprintf "%g" v)
 
 let transform_rotate = function
   | 0. -> []
-  | rotation -> [`Rotate ((rotation, Some `Deg), None)]
+  | rotation -> [`Rotate ((rotation, None), None)]
 
 (* Prepare the drawing coordinates and colors. *)
 let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
@@ -400,29 +405,6 @@ let draw_circle canvas xy level ?(sub_level=Objects)
       [circle]
     )
 
-let draw_quarter canvas (x, y) level ?(sub_level=Objects)
-    ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
-  draw_figure canvas (x, y - 1) level ~sub_level ~size:(2, 2)
-    ~rotation ~darken ~accumulator color
-    (fun (coordx, coordy) (coordx', coordy') style ->
-      let radius = pixel_stud *. proportion in
-      let cx = (coordx +. coordx') /. 2. in
-      let cy = (coordy +. coordy') /. 2. in
-      let (coordx, coordy) = angular_from (cx, cy) 180. radius in
-      let (coordx', coordy') = angular_from (cx, cy) 90. radius in
-      let%svg path =
-        "<path d="
-            (String.concat " " Printf.[
-              sprintf "M %g,%g" coordx' coordy ;
-              sprintf "L %g,%g" coordx' coordy' ;
-              sprintf "A %g %g 0 0 1 %g,%g" radius radius coordx coordy ;
-              "z"
-            ])
-          " style="style
-          " transform="(transform_rotate rotation)" />" in
-      [path]
-    )
-
 let draw_half_circle canvas xy level ?(sub_level=Objects)
     ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
   draw_figure canvas xy level ~sub_level ~rotation ~darken ~accumulator color
@@ -446,12 +428,35 @@ let draw_half_circle canvas xy level ?(sub_level=Objects)
       [path]
     )
 
-let draw_side_halo canvas xy level ?(sub_level=Lights)
+let draw_quarter canvas (x, y) level ?(sub_level=Objects)
+    ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
+  draw_figure canvas (x, y - 1) level ~sub_level ~size:(2, 2)
+    ~rotation ~darken ~accumulator color
+    (fun (coordx, coordy) (coordx', coordy') style ->
+      let radius = pixel_stud *. proportion in
+      let cx = (coordx +. coordx') /. 2. in
+      let cy = (coordy +. coordy') /. 2. in
+      let (coordx, coordy) = angular_from (cx, cy) 180. radius in
+      let (coordx', coordy') = angular_from (cx, cy) 90. radius in
+      let%svg path =
+        "<path d="
+            (String.concat " " Printf.[
+              sprintf "M %g,%g" coordx' coordy ;
+              sprintf "L %g,%g" coordx' coordy' ;
+              sprintf "A %g %g 0 0 1 %g,%g" radius radius coordx coordy ;
+              "z"
+            ])
+          " style="style
+          " transform="(transform_rotate rotation)" />" in
+      [path]
+    )
+
+let draw_side_halo canvas (x, y) level ?(sub_level=Lights)
     ?(diameter=1) ?(proportion=1.) ?(accumulator=fun _ -> ()) color =
-  draw_figure canvas xy level ~sub_level ~size:(diameter, diameter)
+  draw_figure canvas (x + 1 - diameter, y) level ~sub_level ~size:(diameter, diameter)
     ~lighten:true ~accumulator color
     (fun (coordx, coordy) (coordx', coordy') style ->
-      let style = style ^ "fill-opacity=.8;" in
+      let style = style ^ " fill-opacity:.8;" in
       let radius = pixel_stud *. proportion *. Float.of_int diameter /. 2. in
       let cx = (coordx +. coordx') /. 2. in
       let cy = (coordy +. coordy') /. 2. in
@@ -459,7 +464,7 @@ let draw_side_halo canvas xy level ?(sub_level=Lights)
       let (bx, by) = angular_from (cx, cy) (-15.) radius in
       let%svg halo =
         "<path d="
-           (let larger_radius = radius +. pixel_stud *. 0.7 in
+           (let larger_radius = radius +. pixel_stud *. 0.5 in
             String.concat " " Printf.[
               sprintf "M %g,%g" ax ay ;
               sprintf "A %g %g 0 0 1 %g,%g" radius radius bx by ;
@@ -640,7 +645,8 @@ let quarter_tile canvas xy ?(level=default_level) direction color =
   draw_quarter canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
     ~darken:true (remove_letters color) ;
   draw_quarter canvas xy level ~proportion ~rotation color
-  (* if direction = Dot.South then (
+  (* The following results in an odd rendering.
+  if direction = Dot.South then (
     draw_side_halo canvas xy level ~sub_level:Lights ~diameter:2 ~proportion Dot.White
   ) *)
 
