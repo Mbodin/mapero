@@ -2,6 +2,7 @@
 open Js_of_ocaml
 open Tyxml
 open Js_of_ocaml_tyxml
+open Tyxml_js
 
 
 (* Size in pixel of a single LEGO cell. *)
@@ -26,16 +27,12 @@ module To_dom = Tyxml_cast.MakeTo (struct
   let elt = Tyxml_js.Svg.toelt
 end)
 
-module Build = Tyxml_js.Svg
-
 (* We differenciate two different types for SVG elements:
   the first one, element, is a direct pointer to an element in the DOM.
   The second one is a Tyxml representation that can be safely copied,
   and converted to an actual element. *)
 type element = Dom_svg.element Js.t
-type element_repr = Svg_types.g_content Tyxml_js.Svg.elt (* FIXME: Or Tyxml_svg.elt? *)
-
-(*FIXME: let namespace_SVG = Js.string "http://www.w3.org/2000/svg"*)
+type element_repr = Svg_types.g_content Svg.elt
 
 (* Converting a Tyxml object to an element.
   Theorically, it is possible to get a non-element node (text, comments, etc.),
@@ -44,38 +41,30 @@ let to_element (repr : element_repr) : element =
   let node = To_dom.of_node repr in
   Js.Opt.get (Dom_svg.CoerceTo.element node) (fun () -> assert false)
 
+(* Setting the attributes of an element. *)
 let setAttributes (elem : element) l =
   List.iter (fun (key, value) ->
     elem##setAttribute (Js.string key) value) l
 
-(* Convert a representation to an element and add it to the DOM at a specific place. *)
+(* Convert a representation to an element and add it to the DOM at a specific place,
+  then returning the built element. *)
 let build_append_to elem (new_child : element_repr) =
   let new_child = to_element new_child in
   Dom.appendChild elem new_child ;
   new_child
 
+(* Same but without returning the build element. *)
 let append_to elem new_child =
   ignore (build_append_to elem new_child)
 
-(*let createSVGElement kind attributes : nodeSVG =
-  let element : nodeSVG =
-    Dom_svg.createElement Dom_svg.document kind in
-  setSVGAttributes element attributes ;
-  element*)
-
-let rec clear_node n =
+(* Removing all the content of an element. *)
+let rec clear_element (n : element) =
   match Js.Opt.to_option n##.firstChild with
   | Some c ->
     ignore (n##removeChild c) ;
-    clear_node n
+    clear_element n
   | None -> ()
 
-
-(*let coerce_HTML_to_SVG (node : nodeHTML) : nodeSVG = Js.Unsafe.coerce node (* TODO *)
-let coerce_to_SVG (node : node) : nodeSVG = Js.Unsafe.coerce node (* TODO *)
-let coerce_node node : node =
-  Js.Opt.get (Dom.CoerceTo.element node) (fun () ->
-    invalid_arg "coerce_node")*)
 
 module IMap = Map.Make (Structures.IntOrder)
 
@@ -125,9 +114,8 @@ let init_svg () : element =
   let id = "map" in
   Js.Opt.get (Dom_svg.document##getElementById (Js.string id)) (fun () ->
       (* No map found: creating one. *)
-      let full = (100., Some `Percent) in
-      build_append_to Dom_html.document##.body
-        Build.(svg ~a:[a_width full; a_height full; a_id id] []))
+      let%svg svg = "<svg width='100%' height='100%' id="id"></svg>" in
+      build_append_to Dom_html.document##.body svg)
 
 let window_x, window_y =
   (fun _ -> window##.innerWidth),
@@ -135,7 +123,8 @@ let window_x, window_y =
 
 let create_sub_levels add level =
   let create name =
-    let g = Build.(g ~a:[a_id (Printf.sprintf "%s-%d" name level)] []) in
+    let id = Printf.sprintf "%s-%d" name level in
+    let%svg g = "<g id="id"></g>" in
     let g = to_element g in
     add g ;
     g
@@ -164,50 +153,35 @@ let init on_change =
     min_coord = min_coord
   } in
   (* Adding basic styles *)
-  append_to r.svg Build.(
-      let content =
-        String.concat "\n\t" [
-          "* { transform-origin: center; transform-box: fill-box; }" ;
-          "text { font-family: \"Noto\", sans-serif; font-weight: bold;"
-          ^ " text-anchor: middle; dominant-baseline: central; }"
-        ] in
-      style (pcdata content)
-    ) ;
+  append_to r.svg
+    (let%svg style =
+       "<style>"
+        "* { transform-origin: center; transform-box: fill-box; }"
+        "text {"
+          "font-family: \"Noto\", sans-serif; font-weight: bold;"
+          "text-anchor: middle; dominant-baseline: central;"
+        "}"
+        "</style>" in
+     style) ;
   (* Adding some filters *)
-  append_to r.svg Build.(
-      defs [
-        filter ~a:[
-          a_id "blur_light_moon" ;
-          a_style "color-interpolation-filters:sRGB" ;
-          a_x (-0.1, None) ;
-          a_width (1.2, None) ;
-          a_y (-0.1, None) ;
-          a_height (1.2, None)
-        ] [
-          feGaussianBlur ~a:[a_stdDeviation (0.3, None)] []
-        ] ;
-        linearGradient ~a:[
-          a_id "gradient_cardioid" ;
-          a_gradientTransform [`Rotate ((shadow_angle, Some `Deg), Some (0.5, 0.5))]
-        ] [
-          stop ~a:[
-            a_offset 0 ;
-            a_stop-color "white" ;
-            a_stop-opacity 1
-          ] ;
-          stop ~a:[
-            a_offset 0 ;
-            a_stop-color "white" ;
-            a_stop-opacity 1
-          ] ;
-          stop ~a:[
-            a_offset 1 ;
-            a_stop-color "white" ;
-            a_stop-opacity 0
-          ]
-        ]
-      ]
-    ) ;
+  append_to r.svg
+    (let%svg defs =
+       (* FIXME: Issue https://github.com/ocsigen/tyxml/issues/307 prevents us to write it all nicely. *)
+      "<defs>"
+        "<filter id='blur_light_moon' style='color-interpolation-filters:sRGB'
+            x=-0.1 width=1.2 y=-0.1 height=1.2>"
+          Svg.[feGaussianBlur ~a:[a_stdDeviation (0.3, None)] []]
+        "</filter>"
+        Svg.(linearGradient ~a:[
+            a_id "gradient_cardioid" ;
+            a_gradientTransform [`Rotate ((shadow_angle, Some `Deg), Some (0.5, 0.5))]
+          ] [
+            "<stop offset=0 stop-color='white' stop-opacity=1 />"
+            "<stop offset=0.5 stop-color='white' stop-opacity=1 />"
+            "<stop offset=1 stop-color='white' stop-opacity=0 />"
+          ])
+      "</defs>" in
+     defs) ;
   (* Creating a level 0 *)
   let sub_level = create_sub_levels (Dom.appendChild r.svg) 0 in
   r.levels := IMap.add 0 sub_level !(r.levels) ;
@@ -242,10 +216,10 @@ let init on_change =
 
 let clear canvas =
   IMap.iter (fun _level sub_level ->
-      clear_node sub_level.objects ;
-      clear_node sub_level.shadows ;
-      clear_node sub_level.lights ;
-      clear_node sub_level.passing_through
+      clear_element sub_level.objects ;
+      clear_element sub_level.shadows ;
+      clear_element sub_level.lights ;
+      clear_element sub_level.passing_through
     ) !(canvas.levels)
 
 
