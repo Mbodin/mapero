@@ -46,6 +46,14 @@ let setAttributes (elem : element) l =
   List.iter (fun (key, value) ->
     elem##setAttribute (Js.string key) value) l
 
+let mapAttribute (elem : element) attr f =
+  let v =
+    Js.Opt.get
+      (Js.Opt.map (elem##getAttribute (Js.string attr)) Js.to_string)
+      (fun () -> "") in
+  let v = f v in
+  elem##setAttribute (Js.string attr) (Js.string v)
+
 (* Convert a representation to an element and add it to the DOM at a specific place,
   then returning the built element. *)
 let build_append_to elem (new_child : element_repr) =
@@ -176,6 +184,14 @@ let init on_change =
         "<filter id='blur_light_moon' style='color-interpolation-filters:sRGB'
             x=-0.1 width=1.2 y=-0.1 height=1.2>"
           Svg.[feGaussianBlur ~a:[a_stdDeviation (0.3, None)] []]
+        "</filter>"
+        "<filter id='blur_shadow' style='color-interpolation-filters:sRGB'
+            x=-0.35 width=1.7 y=-0.35 height=1.7>"
+          Svg.[feGaussianBlur ~a:[a_stdDeviation (1., None)] []]
+        "</filter>"
+        "<filter id='blur_reflection_ray' style='color-interpolation-filters:sRGB'
+            x=-0.8 width=2.6 y=-0.8 height=2.6>"
+          Svg.[feGaussianBlur ~a:[a_stdDeviation (2., None)] []]
         "</filter>"
         Svg.[linearGradient ~a:[
             a_id "gradient_cardioid" ;
@@ -316,11 +332,11 @@ val draw_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diamete
   a transparent circle tile. *)
 val draw_cardioid : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(element_repr -> unit) -> Dot.color -> unit
 
-(* This function is to draw shadows.
+(* This function can be used to draw shadows.
   It takes as argument two pairs of angle and distance: these correspond to the left and right
-  extreme points of the shape.
+  extreme points of the shape. The distance is expressed as a proportion of the stud length.
   It returns an accumulator that will accumulate any given shape to the shadow. *)
-val draw_shadow : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?angle_left:float -> float -> ?angle_right:float -> float -> ?color:Dot.color -> (element_repr -> unit)
+val draw_shadow : t -> (int * int) -> int -> ?height:int -> ?sub_level:sub_level_type -> ?color:Dot.color -> ?angle_left:float -> float -> ?angle_right:float -> float -> (element_repr -> unit)
 
 end = struct
 
@@ -332,14 +348,8 @@ let transform_rotate = function
   | 0. -> []
   | rotation -> [`Rotate ((rotation, None), None)]
 
-(* Prepare the drawing coordinates and colors. *)
-let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
-    ?(rotation=0.) ?(darken=false) ?(lighten=false)
-    ?(accumulator=fun _ -> ()) color build_nodes =
-  let (dx, dy) = size in
-  let x', y' = x + dx, y + dy in
-  let coord = get_perspective (x, y) level in
-  let coord' = get_perspective (x', y') level in
+(* Prepare the default style. *)
+let get_style ?(darken=false) ?(lighten=false) color =
   let style =
     let (r, g, b) = Color.to_rgb color in
     let (r, g, b) =
@@ -353,8 +363,19 @@ let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
     if Color.is_transparent color then
       style ^ "fill-opacity:.5;"
     else style in
+  style
+
+(* Prepare the drawing coordinates and colors. *)
+let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
+    ?(rotation=0.) ?(darken=false) ?(lighten=false)
+    ?(accumulator=fun _ -> ()) color build_nodes =
+  let (dx, dy) = size in
+  let x', y' = x + dx, y + dy in
+  let coord = get_perspective (x, y) level in
+  let coord' = get_perspective (x', y') level in
+  let style = get_style ~darken ~lighten color in
   let l = build_nodes coord coord' style in
-  let level = get_level canvas ~sub_level:sub_level level in
+  let level = get_level canvas ~sub_level level in
   List.iter (append_to level) l ;
   List.iter accumulator l ;
   (* Dealing with special cases. *)
@@ -458,8 +479,11 @@ let draw_side_halo canvas (x, y) level ?(sub_level=Lights)
     (fun (coordx, coordy) (coordx', coordy') style ->
       let style = style ^ " fill-opacity:.8;" in
       let radius = pixel_stud *. proportion *. Float.of_int diameter /. 2. in
-      let cx = (coordx +. coordx') /. 2. in
-      let cy = (coordy +. coordy') /. 2. in
+      let correction =
+        (* Some correction due to the way larger shapes are drawn. *)
+        Float.of_int (diameter - 1) *. (1. -. proportion) *. pixel_stud in
+      let cx = (coordx +. coordx') /. 2. +. correction in
+      let cy = (coordy +. coordy') /. 2. -. correction in
       let (ax, ay) = angular_from (cx, cy) (-75.) radius in
       let (bx, by) = angular_from (cx, cy) (-15.) radius in
       let%svg halo =
@@ -472,7 +496,7 @@ let draw_side_halo canvas (x, y) level ?(sub_level=Lights)
               "z"
             ])
           " style="style" />" in
-        [halo]
+      [halo]
     )
 
 
@@ -534,25 +558,41 @@ let draw_cardioid canvas xy level ?(sub_level=Lights)
       [cardioid]
     )
 
-let draw_shadow canvas xy level ?(sub_level=Shadows)
-      ?(angle_left=(-135.)) distance_left ?(angle_right=45.) distance_right ?(color=Dot.Black) =
-  let%svg g = "<g></g>" in
-  let shiftx = shadow_distance *. cos (to_radian shadow_angle) in
-  let shifty = shadow_distance *. sin (to_radian shadow_angle) in
-  draw_figure canvas xy level ~sub_level ~darken:true color
-    (fun (coordx, coordy) (coordx', coordy') _style ->
-       [g] (* TODO *)
-    ) ;
+let draw_shadow canvas (x, y) level ?(height=1) ?(sub_level=Shadows) ?(color=Dot.Black)
+      ?(angle_left=(-135.)) proportion_left ?(angle_right=45.) proportion_right =
+  let style = get_style ~darken:true color in
+  let distance_left = proportion_left *. pixel_stud /. 2. in
+  let distance_right = proportion_right *. pixel_stud /. 2. in
+  let (coordx, coordy) = get_perspective (x, y) level in
+  let (coordx', coordy') = get_perspective (x + 1, y + 1) level in
+  let cx = (coordx +. coordx') /. 2. in
+  let cy = (coordy +. coordy') /. 2. in
+  let (xl, yl) = angular_from (cx, cy) angle_left distance_left in
+  let (xr, yr) = angular_from (cx, cy) angle_right distance_right in
+  let shiftx = Float.of_int height *. shadow_distance *. cos (to_radian shadow_angle) in
+  let shifty = Float.of_int height *. shadow_distance *. sin (to_radian shadow_angle) in
+  let points = [
+    (xl, yl) ;
+    (xr, yr) ;
+    (xr +. shiftx, yr +. shifty) ;
+    (xl +. shiftx, yl +. shifty)
+  ] in
+  let%svg g =
+    "<g style='filter:url(#blur_shadow); opacity:0.2;'>"
+      "<polyline style="style" points="points" />"
+    "</g>" in
   let g = to_element g in
+  let level = get_level canvas ~sub_level level in
+  Dom.appendChild level g ;
   fun (elem : element_repr) -> (
     let elem1 = to_element elem in
     let elem2 = to_element elem in
-    let transform =
-      Js.Opt.get
-        (Js.Opt.map (elem2##getAttribute (Js.string "transform")) Js.to_string)
-        (fun () -> "") in
-    let transform = transform ^ Printf.sprintf " translate(%g, %g)" shiftx shifty in
-    setAttributes elem2 [("transform", Js.string transform)] ;
+    let clear_style (elem : element) =
+      elem##setAttribute (Js.string "style") (Js.string style) in
+    clear_style elem1 ;
+    clear_style elem2 ;
+    mapAttribute elem2 "transform" (fun transform ->
+      transform ^ Printf.sprintf " translate(%g, %g)" shiftx shifty) ;
     Dom.appendChild g elem1 ;
     Dom.appendChild g elem2
   )
@@ -601,7 +641,9 @@ let base_plate canvas xy ?(size=(1, 1)) color =
   draw_rectangle canvas xy 0 ~size (remove_letters color) ;
   (* Stud proportion. *)
   let proportion = 0.57 in
-  draw_circle canvas xy 0 ~sub_level:PassingThrough ~proportion ~darken:true (remove_letters color) ;
+  let shadow = draw_shadow canvas xy 0 proportion proportion in
+  draw_circle canvas xy 0 ~sub_level:PassingThrough ~proportion ~darken:true
+    ~accumulator:shadow (remove_letters color) ;
   draw_circle canvas xy 1 ~proportion color ;
   draw_side_halo canvas xy 1 ~sub_level:Lights ~proportion Dot.White
 
@@ -644,11 +686,10 @@ let quarter_tile canvas xy ?(level=default_level) direction color =
   let proportion = 0.95 in
   draw_quarter canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
     ~darken:true (remove_letters color) ;
-  draw_quarter canvas xy level ~proportion ~rotation color
-  (* The following results in an odd rendering.
+  draw_quarter canvas xy level ~proportion ~rotation color ;
   if direction = Dot.South then (
     draw_side_halo canvas xy level ~sub_level:Lights ~diameter:2 ~proportion Dot.White
-  ) *)
+  )
 
 let half_circle_tile canvas xy ?(level=default_level) direction color =
   let level = convert_level level in
