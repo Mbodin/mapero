@@ -13,7 +13,7 @@ let draw canvas =
   let open Canvas.Lego in
   Canvas.clear canvas ;
   Canvas.iter (fun xy ->
-      base_plate canvas xy Dot.Coral
+      base_plate canvas xy Dot.Light_aqua
     ) canvas ;
   (* Some tests. *)
   List.iteri (fun i c ->

@@ -16,7 +16,7 @@ let pixel_stud_height = pixel_stud / 4
 let distance_to_user = 200
 
 let shadow_angle = 135.
-let shadow_distance = Float.of_int pixel_stud /. 2.5
+let shadow_distance = Float.of_int pixel_stud /. 4.
 
 (* Some generic DOM functions *)
 
@@ -130,15 +130,19 @@ let window_x, window_y =
   (fun _ -> window##.innerHeight)
 
 let create_sub_levels add level =
-  let create name =
+  let create ?(style="") name =
     let id = Printf.sprintf "%s-%d" name level in
-    let%svg g = "<g id="id"></g>" in
+    let g =
+      if style = "" then
+        let%svg g = "<g id="id"></g>" in g
+      else
+        let%svg g = "<g id="id" style="style"></g>" in g in
     let g = to_element g in
     add g ;
     g in
   (* Due to side-effects, the order is important there. *)
   let objects = create "level" in
-  let shadows = create "shadows" in
+  let shadows = create ~style:"opacity:0.2;" "shadows" in
   let lights = create "lights" in
   let passing_through = create "volumes" in
   {
@@ -183,11 +187,11 @@ let init on_change =
       "<defs>"
         "<filter id='blur_light_moon' style='color-interpolation-filters:sRGB'
             x=-0.1 width=1.2 y=-0.1 height=1.2>"
-          Svg.[feGaussianBlur ~a:[a_stdDeviation (0.3, None)] []]
+          Svg.[feGaussianBlur ~a:[a_stdDeviation (0.2, None)] []]
         "</filter>"
         "<filter id='blur_shadow' style='color-interpolation-filters:sRGB'
-            x=-0.35 width=1.7 y=-0.35 height=1.7>"
-          Svg.[feGaussianBlur ~a:[a_stdDeviation (1., None)] []]
+            x=-0.3 width=1.6 y=-0.3 height=1.6>"
+          Svg.[feGaussianBlur ~a:[a_stdDeviation (0.5, None)] []]
         "</filter>"
         "<filter id='blur_reflection_ray' style='color-interpolation-filters:sRGB'
             x=-0.8 width=2.6 y=-0.8 height=2.6>"
@@ -361,7 +365,11 @@ let get_style ?(darken=false) ?(lighten=false) color =
     Printf.sprintf "fill:rgb(%d,%d,%d);" r g b in
   let style =
     if Color.is_transparent color then
-      style ^ "fill-opacity:.5;"
+      if darken then
+        (* This is about a shadow drawn below a transparent element,
+          and we don't want to overmake it. *)
+        style ^ "fill-opacity:.1;"
+      else style ^ "fill-opacity:.5;"
     else style in
   style
 
@@ -578,7 +586,7 @@ let draw_shadow canvas (x, y) level ?(height=1) ?(sub_level=Shadows) ?(color=Dot
     (xl +. shiftx, yl +. shifty)
   ] in
   let%svg g =
-    "<g style='filter:url(#blur_shadow); opacity:0.2;'>"
+    "<g style='filter:url(#blur_shadow);'>"
       "<polyline style="style" points="points" />"
     "</g>" in
   let g = to_element g in
@@ -592,7 +600,7 @@ let draw_shadow canvas (x, y) level ?(height=1) ?(sub_level=Shadows) ?(color=Dot
     clear_style elem1 ;
     clear_style elem2 ;
     mapAttribute elem2 "transform" (fun transform ->
-      transform ^ Printf.sprintf " translate(%g, %g)" shiftx shifty) ;
+      Printf.sprintf "translate(%g, %g) %s" shiftx shifty transform) ;
     Dom.appendChild g elem1 ;
     Dom.appendChild g elem2
   )
@@ -637,6 +645,16 @@ let remove_letters = function
   | Dot.Letter _ -> Dot.White
   | c -> c
 
+(* Ratio between the diagonal of a square compare to a base unit. *)
+let square_proportion proportion = proportion *. sqrt 2.
+
+(* Angular position of the angle of a square and circles. *)
+let circle_angle_left = -135.
+let circle_angle_right = 45.
+let square_angle_left rotation = rotation +. circle_angle_left
+let square_angle_right rotation = rotation +. circle_angle_right
+
+
 let base_plate canvas xy ?(size=(1, 1)) color =
   draw_rectangle canvas xy 0 ~size (remove_letters color) ;
   (* Stud proportion. *)
@@ -651,14 +669,20 @@ let square_tile canvas xy ?(level=default_level) ?(size=(1, 1)) color =
   let level = convert_level level in
   let rotation = get_rotation_size xy size in
   let proportion = 0.95 in
+  let shadow =
+    let sq_proportion = square_proportion proportion in
+    let angle_l = square_angle_left rotation in
+    let angle_r = square_angle_right rotation in
+    draw_shadow canvas xy 0 ~angle_left:angle_l sq_proportion ~angle_right:angle_r sq_proportion in
   draw_rectangle canvas xy (level - 2) ~sub_level:PassingThrough ~size ~proportion ~rotation
-    ~darken:true (remove_letters color) ;
+    ~darken:true ~accumulator:shadow (remove_letters color) ;
   draw_rectangle canvas xy level ~size ~proportion ~rotation color
 
 let round_tile canvas xy ?(level=default_level) ?(diameter=1) color =
   let level = convert_level level in
   let rotation = get_rotation_size ~double_rotation:true xy (diameter, diameter) in
   let proportion = 0.95 in
+  let shadow = draw_shadow canvas xy 0 proportion proportion in
   if Color.is_transparent color then (
     (* Adding special shades underneath the circle. *)
     let proportion = 0.57 in
@@ -667,7 +691,7 @@ let round_tile canvas xy ?(level=default_level) ?(diameter=1) color =
     draw_cardioid canvas xy (level - 2) ~sub_level:Lights ~diameter ~proportion color
   ) ;
   draw_circle canvas xy (level - 2) ~sub_level:PassingThrough ~diameter ~proportion ~rotation
-    ~darken:true (remove_letters color) ;
+    ~darken:true ~accumulator:shadow (remove_letters color) ;
   draw_circle canvas xy level ~diameter ~proportion ~rotation color ;
   draw_side_halo canvas xy level ~sub_level:Lights ~diameter ~proportion Dot.White
 
@@ -679,13 +703,24 @@ let convert_direction = function
 
 let quarter_tile canvas xy ?(level=default_level) direction color =
   let level = convert_level level in
-  let rotation =
+  let base_rotation =
     let size = (1, 1) in
     get_rotation_size xy size in
-  let rotation = rotation +. convert_direction direction in
+  let rotation = base_rotation +. convert_direction direction in
   let proportion = 0.95 in
+  let shadow =
+    let sq_proportion = square_proportion proportion in
+    let (angle_l, proportion_l) =
+      match direction with
+      | Dot.East -> (circle_angle_left, proportion *. 0.6)
+      | _ -> (square_angle_left base_rotation, sq_proportion) in
+    let (angle_r, proportion_r) =
+      match direction with
+      | Dot.West -> (circle_angle_right, proportion *. 0.6)
+      | _ -> (square_angle_right base_rotation, sq_proportion) in
+    draw_shadow canvas xy 0 ~angle_left:angle_l proportion_l ~angle_right:angle_r proportion_r in
   draw_quarter canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
-    ~darken:true (remove_letters color) ;
+    ~darken:true ~accumulator:shadow (remove_letters color) ;
   draw_quarter canvas xy level ~proportion ~rotation color ;
   if direction = Dot.South then (
     draw_side_halo canvas xy level ~sub_level:Lights ~diameter:2 ~proportion Dot.White
@@ -693,13 +728,24 @@ let quarter_tile canvas xy ?(level=default_level) direction color =
 
 let half_circle_tile canvas xy ?(level=default_level) direction color =
   let level = convert_level level in
-  let rotation =
+  let base_rotation =
     let size = (1, 1) in
     get_rotation_size xy size in
-  let rotation = rotation +. convert_direction direction in
+  let rotation = base_rotation +. convert_direction direction in
   let proportion = 0.95 in
+  let shadow =
+    let sq_proportion = square_proportion proportion in
+    let (angle_l, proportion_l) =
+      match direction with
+      | Dot.North | Dot.West -> (square_angle_left base_rotation, sq_proportion)
+      | Dot.South | Dot.East -> (circle_angle_left, proportion) in
+    let (angle_r, proportion_r) =
+      match direction with
+      | Dot.North | Dot.West -> (circle_angle_right, proportion)
+      | Dot.South | Dot.East -> (square_angle_right base_rotation, sq_proportion) in
+    draw_shadow canvas xy 0 ~angle_left:angle_l proportion_l ~angle_right:angle_r proportion_r in
   draw_half_circle canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
-    ~darken:true (remove_letters color) ;
+    ~darken:true ~accumulator:shadow (remove_letters color) ;
   draw_half_circle canvas xy level ~proportion ~rotation color ;
   if direction = Dot.South || direction = Dot.West then
     draw_side_halo canvas xy level ~sub_level:Lights ~proportion Dot.White
