@@ -135,8 +135,8 @@ let add_line m xy xy'
         let (x, x') = if x > x' then (x', x) else (x, x') in
         fold_within_x m x x' (fun m xc ->
           let shape =
-            if xc = x then Dot.Half_circle Dot.West
-            else if xc = x' then Dot.Half_circle Dot.East
+            if xc = x then Dot.Half_circle Dot.East
+            else if xc = x' then Dot.Half_circle Dot.West
             else Dot.Square in
           add_PoI_int m (xc, y) priority level style ~adaptive:shape color) in
       Some m
@@ -176,15 +176,15 @@ let add_line m xy xy'
         if distance_x > distance_y then
           (* The smallest distance is to go to the right. *)
           let is_core = true (* TODO *) in
-          let m = draw m (xc, yc) is_core (Dot.Half_circle Dot.West) in
+          let m = draw m (xc, yc) is_core (Dot.Half_circle Dot.East) in
           let xc = xc + 1 in
           let is_core = true (* TODO *) in
-          let m = draw m (xc, yc) is_core (Dot.Half_circle Dot.East) in
+          let m = draw m (xc, yc) is_core (Dot.Half_circle Dot.West) in
           aux m (xc, yc)
         else
           (* The smallest distance is to go above or below. *)
           let is_core = true (* TODO *) in
-          let dir = if slope > 0. then Dot.North else Dot.South in
+          let dir = if slope < 0. then Dot.North else Dot.South in
           let m = draw m (xc, yc) is_core (Dot.Half_circle dir) in
           let is_core = true (* TODO *) in
           let m = draw m (xc, yc') is_core (Dot.Half_circle (Shape.uturn dir)) in

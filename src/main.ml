@@ -32,12 +32,15 @@ let add_text_angle map txt =
 let draw_map map =
   let open Geometry in
   let map = add_text_angle map "TEST" in
-  let map = add_PoI map (1., 1.) Dot.Yellowish_green in
-  let map = add_line map (3., 3.) (3., 7.) Dot.Lavender in
-  let map = add_line map (5., 2.) (13., 2.) Dot.Medium_azure in
-  let map = add_line map (7., 7.) (14., 2.) Dot.Bright_green in
-  let map = add_line map (9., 9.) (16., 16.) Dot.Coral in
-  let map = add_polygon map [(6., 18.) ; (15., 22.) ; (12., 32.)] Dot.Dark_turquoise in
+  let map = add_PoI map (1., 1.) ~level:1 Dot.Yellowish_green in
+  let map = add_line map (3., 3.) (3., 7.) ~level:2 Dot.Lavender in
+  let map = add_line map (5., 2.) (13., 2.) ~level:3 Dot.Medium_azure in
+  let map = add_line map (7., 9.) (14., 4.) ~level:4 Dot.Bright_green in
+  let map = add_line map (9., 9.) (16., 16.) ~level:5 Dot.Coral in
+  let map = add_polygon map [(18., 2.) ; (25., 4.) ; (22., 5.)] ~border_level:6 Dot.Dark_turquoise () in
+  let map = add_PoI map (18., 2.) ~level:1 Dot.Yellowish_green in
+  let map = add_PoI map (25., 4.) ~level:1 Dot.Yellowish_green in
+  let map = add_PoI map (22., 5.) ~level:1 Dot.Yellowish_green in
   (* TODO *)
   ignore map
 
@@ -51,6 +54,7 @@ let print_dot canvas coord (shape, color) =
   | Dot.Quarter dir -> quarter_tile canvas coord dir color
 
 let draw canvas =
+  Canvas.clear canvas ;
   (* Initialising a new map to draw on.  *)
   let size = Canvas.get_size canvas in
   let map = Geometry.empty size in
