@@ -125,8 +125,8 @@ let add_line m xy xy'
         let (y, y') = if y > y' then (y', y) else (y, y') in
         fold_within_y m y y' (fun m yc ->
           let shape =
-            if yc = y then Dot.Half_circle Dot.South
-            else if yc = y' then Dot.Half_circle Dot.North
+            if yc = y then Dot.Half_circle Dot.North
+            else if yc = y' then Dot.Half_circle Dot.South
             else Dot.Square in
           add_PoI_int m (x, yc) priority level style ~adaptive:shape color) in
       Some m
@@ -172,7 +172,7 @@ let add_line m xy xy'
         let x' = x_at yc' in
         let distance_x = x' -. Float.of_int xc in
         assert (distance_x >= 0.) ;
-        let distance_y = Float.abs (y' -. Float.of_int xc) in
+        let distance_y = Float.abs (y' -. Float.of_int yc) in
         if distance_x > distance_y then
           (* The smallest distance is to go to the right. *)
           let is_core = true (* TODO *) in
@@ -184,7 +184,7 @@ let add_line m xy xy'
         else
           (* The smallest distance is to go above or below. *)
           let is_core = true (* TODO *) in
-          let dir = if slope < 0. then Dot.North else Dot.South in
+          let dir = if slope > 0. then Dot.North else Dot.South in
           let m = draw m (xc, yc) is_core (Dot.Half_circle dir) in
           let is_core = true (* TODO *) in
           let m = draw m (xc, yc') is_core (Dot.Half_circle (Shape.uturn dir)) in
@@ -197,11 +197,21 @@ let add_line m xy xy'
       let xy =
         if x < 0. then (0., y_at 0)
         else (x, y) in
-      convert_coordinates_from_real xy in
-    (* TODO: As is, if the extremes are out of bounds, then the drawn extremeties will be
+      let xy = convert_coordinates_from_real xy in
+      if within_bounds m xy then xy
+      else
+        let (_, y) = xy in
+        (* Even when normalising to x = 0, we are out of bounds. *)
+        if y < 0 then (Float.to_int (x_at 0), 0)
+        else (
+          if (y >= m.size.y) then
+            (Float.to_int (x_at (m.size.y - 1)), m.size.y - 1)
+          else xy (* We are probably already out anyway. *)
+        ) in
+    (* TODO: As-is, if the extremes are out of bounds, then the drawn extremeties will be
       displayed as half-circle instead of quarters or square. *)
-    (* TODO: As is, if the x-coordinate of the leftbound extremity is out of bounds, but
-      that the line eventually becomes in bounds, then it won't be displayed. *)
+    (* TODO: As-is, it seems that sometimes, the line can have a startint point after the end,
+      and a line that should not have been displayed is prolongated away into the canvas. *)
     let m = draw_extremes m start_xy in
     let m = draw_extremes m (end_x, end_y) in
     (* Drawing in between. *)

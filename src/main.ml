@@ -25,22 +25,29 @@ let overpass_query map_info =
 
 (* Add a text in the right low angle. *)
 let add_text_angle map txt =
-  let (size_x, size_y) = Geometry.get_size map in
-  Geometry.add_text map (size_x - String.length txt, size_y - 1) ~priority:VeryHigh txt
+  let (size_x, _size_y) = Geometry.get_size map in
+  Geometry.add_text map (size_x - String.length txt, 0) ~priority:VeryHigh txt
 
 (* Draw the map on a Geometry.t object. *)
 let draw_map map =
   let open Geometry in
   let map = add_text_angle map "TEST" in
+  let map =
+    add_PoI map (1., 5.) ~level:1
+      ~style:(Geometry.Pattern (fun _ -> Dot.Half_circle Dot.North)) Dot.Yellowish_green in
   let map = add_PoI map (1., 1.) ~level:1 Dot.Yellowish_green in
   let map = add_line map (3., 3.) (3., 7.) ~level:2 Dot.Lavender in
   let map = add_line map (5., 2.) (13., 2.) ~level:3 Dot.Medium_azure in
   let map = add_line map (7., 9.) (14., 4.) ~level:4 Dot.Bright_green in
-  let map = add_line map (9., 9.) (16., 16.) ~level:5 Dot.Coral in
+  let map = add_line map (10., 10.) (16., 16.) ~level:5 Dot.Coral in
+  let map = add_line map (16., 10.) (10., 16.) ~level:6 Dot.Bright_light_yellow in
   let map = add_polygon map [(18., 2.) ; (25., 4.) ; (22., 5.)] ~border_level:6 Dot.Dark_turquoise () in
   let map = add_PoI map (18., 2.) ~level:1 Dot.Yellowish_green in
   let map = add_PoI map (25., 4.) ~level:1 Dot.Yellowish_green in
   let map = add_PoI map (22., 5.) ~level:1 Dot.Yellowish_green in
+  let map = add_line map (22., 8.) (25., 7.) ~level:7 Dot.Coral in
+  let map = add_line map (16., 8.) (25., 10.) ~level:5 Dot.Bright_light_orange in
+  let map = add_line map (1., 12.) (6., 14.) ~level:5 ~style:Round Dot.Bright_light_blue in
   (* TODO *)
   ignore map
 
@@ -67,6 +74,8 @@ let draw canvas =
   Array.iteri (fun x ->
     Array.iteri (fun y dot ->
         (* We first convert the coordinate systems. *)
+        (* SVG makes the y axes run from top to bottom: we put it back from bottom to top. *)
+        let y = snd size - 1 - y in
         let (x, y) = (x + fst min_coords, y + snd min_coords) in
         (* Then draw the object. *)
         let open Canvas.Lego in
