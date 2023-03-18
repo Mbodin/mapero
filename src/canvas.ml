@@ -108,6 +108,9 @@ let get_sub_level sub_level = function
   | PassingThrough -> sub_level.passing_through
 
 
+let get_size canvas = !(canvas.size)
+let get_min_coords canvas = !(canvas.min_coord)
+
 let iter f canvas =
   let (min_x, min_y) = !(canvas.min_coord) in
   let (s_x, s_y) = !(canvas.size) in
@@ -616,7 +619,7 @@ module Lego = struct
   there is a 2-factor in place there. *)
 
 (* The following two constant converts the levels from the current system to the old one. *)
-let default_level = 2
+let default_level = 1
 let convert_level level = 2 * level
 
 

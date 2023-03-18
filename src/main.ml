@@ -1,45 +1,76 @@
 
 let _ = Random.self_init ()
 
-let display_map query_function map_object map_info =
-  let query = query_function map_info in
-  (* Fetching and parsing the result of the query. *)
-  let%lwt data = (* TODO *)Lwt.return () in
-  (* Displaying the data. *)
+(* The current state of the map. *)
+type map_state = {
+  zoom_level : int ;
+  map_center : Geometry.real_coordinates ;
+}
+
+let default_map_state = {
+  zoom_level = 18 ;
+  map_center = (45.18573, 5.73954) (* TODO: What should be the default location? *)
+}
+
+(* The current settings of the map. *)
+let map_settings = ref default_map_state
+
+(* TODO: It would be nice to retrieve the value it was in the last visit of the page, if any. *)
+
+
+(* Building an Overpass query, as a function of the current settings. *)
+let overpass_query map_info =
+  ignore Settings.objects (* TODO *) ;
+  ()
+
+(* Add a text in the right low angle. *)
+let add_text_angle map txt =
+  let (size_x, size_y) = Geometry.get_size map in
+  Geometry.add_text map (size_x - String.length txt, size_y - 1) ~priority:VeryHigh txt
+
+(* Draw the map on a Geometry.t object. *)
+let draw_map map =
+  let open Geometry in
+  let map = add_text_angle map "TEST" in
+  let map = add_PoI map (1., 1.) Dot.Yellowish_green in
+  let map = add_line map (3., 3.) (3., 7.) Dot.Lavender in
+  let map = add_line map (5., 2.) (13., 2.) Dot.Medium_azure in
+  let map = add_line map (7., 7.) (14., 2.) Dot.Bright_green in
+  let map = add_line map (9., 9.) (16., 16.) Dot.Coral in
+  let map = add_polygon map [(6., 18.) ; (15., 22.) ; (12., 32.)] Dot.Dark_turquoise in
   (* TODO *)
-  Lwt.return ()
+  ignore map
+
+(* Print the dot onto the canvas. *)
+let print_dot canvas coord (shape, color) =
+  let open Canvas.Lego in
+  match shape with
+  | Dot.Round -> round_tile canvas coord color
+  | Dot.Square -> square_tile canvas coord color
+  | Dot.Half_circle dir -> half_circle_tile canvas coord dir color
+  | Dot.Quarter dir -> quarter_tile canvas coord dir color
 
 let draw canvas =
-  let open Canvas.Lego in
-  Canvas.clear canvas ;
-  Canvas.iter (fun xy ->
-      base_plate canvas xy Dot.Light_aqua
-    ) canvas ;
-  (* Some tests. *)
-  List.iteri (fun i c ->
-      square_tile canvas (i - 5, -5) c ;
-      round_tile canvas (i - 5, -4) c ;
-      List.iteri (fun j d ->
-          quarter_tile canvas (i - 5, -3 + j) d c ;
-          half_circle_tile canvas (i - 5, 1 + j) d c
-        ) Dot.[North; West; South; East]
-    ) Dot.[Black; White; Bright_green; Bright_light_blue; Coral; Dark_azure; Dark_turquoise;
-           Lavender; Trans_orange; Satin_trans_clear; Yellow;
-           Bright_light_orange; Bright_light_yellow; Bright_pink; Light_aqua;
-           Medium_azure; Yellowish_green] ;
-  List.iteri (fun i c ->
-      round_tile canvas (i - 5, 5) c
-    ) Dot.[Letter "T"; Letter "E"; Letter "S"; Letter "T"] ;
-  () (* TODO *)
+  (* Initialising a new map to draw on.  *)
+  let size = Canvas.get_size canvas in
+  let map = Geometry.empty size in
+  (* Display the actual map within it. *)
+  draw_map map ;
+  (* Print this map onto the canvas. *)
+  let map = Geometry.to_dot_matrix map in
+  let background = Dot.Light_aqua in (* TODO: Make it depend on the local climate. *)
+  let min_coords = Canvas.get_min_coords canvas in
+  Array.iteri (fun x ->
+    Array.iteri (fun y dot ->
+        (* We first convert the coordinate systems. *)
+        let (x, y) = (x + fst min_coords, y + snd min_coords) in
+        (* Then draw the object. *)
+        let open Canvas.Lego in
+        base_plate canvas (x, y) background ;
+        Option.iter (print_dot canvas (x, y)) dot
+      )) map
 
 let _ =
-  (* The default information about the map. *)
-  let map_info = ref (* TODO: bbox, zoom level, etc. *)() in
-  (* Preparing the interface. *)
-  let canvas = Canvas.init draw in
-  (* The DOM object in which the map should be displayed. *)
-  let map_object = (* TODO *)() in
-  (* Building an Overpass query, as a function of the map_info. *)
-  let overpass_query = (* TODO *) let _ = Settings.objects in (fun _ -> "TODO") in
-  display_map overpass_query map_object !map_info
+  let _canvas = Canvas.init draw in
+  ()
 

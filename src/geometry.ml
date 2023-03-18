@@ -32,6 +32,8 @@ type t = {
   data : Data.t array array
 }
 
+let get_size m = (m.size.x, m.size.y)
+
 let within_bounds m (x, y) =
   x >= 0 && x < m.size.x &&
   y >= 0 && y < m.size.y

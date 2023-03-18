@@ -12,6 +12,12 @@ val iter : (int * int -> unit) -> t -> unit
 (* Remove all drawing made within the canvas. *)
 val clear : t -> unit
 
+(* Return the current size of the canvas. *)
+val get_size : t -> (int * int)
+
+(* Return the current minimum coordinate of the canvas. *)
+val get_min_coords : t -> (int * int)
+
 
 module Lego : sig
 

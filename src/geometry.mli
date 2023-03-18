@@ -4,12 +4,16 @@
 type t
 
 (* Given the dimensions, create an empty map. *)
-val empty : int * int -> t
+val empty : (int * int) -> t
+
+(* Return the size of the map. *)
+val get_size : t -> (int * int)
 
 (* Coordinates on the map. *)
 type coordinates = int * int
 
-(* Float coordinates, representing raw OSM data. *)
+(* Float coordinates, representing raw OSM data, but with its origin
+  at the same origin than the map. *)
 type real_coordinates = float * float
 
 val convert_coordinates_from_real : real_coordinates -> coordinates
