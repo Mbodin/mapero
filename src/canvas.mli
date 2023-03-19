@@ -26,19 +26,25 @@ module Lego : sig
 (* Draw a base plate at the given coordinates. *)
 val base_plate : t -> (int * int) -> ?size:(int * int) -> Dot.color -> unit
 
+(* Draw a plate at the given coordinates. *)
+val plate : t -> (int * int) -> ?level:int -> ?size:(int * int) -> Dot.color -> unit
+
+(* Stickers are optionnal images glues on the tiles. They are provided by URL. *)
+(* If a ~url optional argument is given, then the tile becomes clickable. *)
+
 (* Draw a square tile at the given coordinates. *)
-val square_tile : t -> (int * int) -> ?level:int -> ?size:(int * int) -> Dot.color -> unit
+val square_tile : t -> (int * int) -> ?level:int -> ?size:(int * int) -> ?sticker:string -> ?url:string -> Dot.color -> unit
 
 (* Draw a round tile at the given coordinates. *)
-val round_tile : t -> (int * int) -> ?level:int -> ?diameter:int -> Dot.color -> unit
+val round_tile : t -> (int * int) -> ?level:int -> ?diameter:int -> ?sticker:string -> ?url:string -> Dot.color -> unit
 
 (* Draw a quarter tile at the given coordinates, following the same orientation
   convention than Dot.Quarter. *)
-val quarter_tile : t -> (int * int) -> ?level:int -> Dot.direction -> Dot.color -> unit
+val quarter_tile : t -> (int * int) -> ?level:int -> Dot.direction -> ?sticker:string -> ?url:string -> Dot.color -> unit
 
 (* Draw a half-circle tile at the given coordinates, following the same orientation
   convention than Dot.Half_circle. *)
-val half_circle_tile : t -> (int * int) -> ?level:int -> Dot.direction -> Dot.color -> unit
+val half_circle_tile : t -> (int * int) -> ?level:int -> Dot.direction -> ?sticker:string -> ?url:string -> Dot.color -> unit
 
 end
 

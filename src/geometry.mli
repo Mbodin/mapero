@@ -27,9 +27,11 @@ type style =
   | Pattern of (int * int -> Dot.shape) (* Some kind of original pattern (e.g., waves). *)
 
 
+(* The levels taken as argument below are priority levels, and not physical levels
+  (in contrary to the convention in the Canvas module. *)
+
 (* Add a single dot to the map, given its coordinates. *)
 val add_PoI : t -> real_coordinates -> ?priority:Structures.priority -> ?level:int -> ?style:style -> Dot.color -> t
-
 
 (* Add a line to the map.
   A line is composed of “core” and “non-core” parts: the core are necessary to see the line

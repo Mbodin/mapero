@@ -92,6 +92,7 @@ type sub_level_type =
 
 type t = {
   svg : element (* The main svg element. *) ;
+  interface : element (* An element on top of everything else, for the interface. *) ;
   levels : sub_levels IMap.t ref (* A group for each level. *) ;
   size : (int * int) ref (* The current size of the whole canvas. *) ;
   min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
@@ -132,7 +133,7 @@ let window_x, window_y =
   (fun _ -> window##.innerWidth),
   (fun _ -> window##.innerHeight)
 
-let create_sub_levels add level =
+let create_sub_levels canvas level =
   let create ?(style="") name =
     let id = Printf.sprintf "%s-%d" name level in
     let g =
@@ -141,7 +142,7 @@ let create_sub_levels add level =
       else
         let%svg g = "<g id="id" style="style"></g>" in g in
     let g = to_element g in
-    add g ;
+    Dom.insertBefore canvas.svg g (Js.Opt.return canvas.interface) ;
     g in
   (* Due to side-effects, the order is important there. *)
   let objects = create "level" in
@@ -166,14 +167,16 @@ let init on_change =
     let compute_min v =
       -v/2 - (v mod 2) in
     min_coord := (compute_min x, compute_min y) in
-  let r = {
+  let%svg interface = "<g id='interface'></g>" in
+  let canvas = {
     svg = init_svg () ;
+    interface = to_element interface ;
     levels = ref IMap.empty ;
     size = xy ;
     min_coord = min_coord
   } in
   (* Adding basic styles *)
-  append_to r.svg
+  append_to canvas.svg
     (let%svg style =
        "<style>"
         "* { transform-origin: center; transform-box: fill-box; }"
@@ -184,7 +187,7 @@ let init on_change =
         "</style>" in
      style) ;
   (* Adding some filters *)
-  append_to r.svg
+  append_to canvas.svg
     (let%svg defs =
        (* FIXME: Issue https://github.com/ocsigen/tyxml/issues/307 prevents us to write it all nicely. *)
       "<defs>"
@@ -212,12 +215,13 @@ let init on_change =
       "</defs>" in
      defs) ;
   (* Creating a level 0 *)
-  let sub_level = create_sub_levels (Dom.appendChild r.svg) 0 in
-  r.levels := IMap.add 0 sub_level !(r.levels) ;
+  Dom.appendChild canvas.svg canvas.interface ;
+  let sub_level = create_sub_levels canvas 0 in
+  canvas.levels := IMap.add 0 sub_level !(canvas.levels) ;
   let on_change _ =
     update_xy () ;
-    let (min_coord_x, min_coord_y) = !(r.min_coord) in
-    let (size_x, size_y) = !(r.size) in
+    let (min_coord_x, min_coord_y) = !(canvas.min_coord) in
+    let (size_x, size_y) = !(canvas.size) in
     let (shift_coord_x, shift_coord_y) =
       let shift w =
         let m = w mod pixel_stud in
@@ -225,7 +229,7 @@ let init on_change =
         else pixel_stud - (w mod pixel_stud) in
       (shift (window_x ()), shift (window_y ())) in
     let convert v = string_of_int (v * pixel_stud) in
-    setAttributes r.svg [
+    setAttributes canvas.svg [
         ("width", Js.string (convert size_x)) ;
         ("height", Js.string (convert size_y)) ;
         ("style", Js.string
@@ -237,11 +241,11 @@ let init on_change =
                 [min_coord_x; min_coord_y;
                  size_x; size_y])))
       ] ;
-    on_change r ;
+    on_change canvas ;
     Js._true in
   window##.onresize := Dom_html.handler on_change ;
   ignore (on_change ()) ;
-  r
+  canvas
 
 let clear canvas =
   IMap.iter (fun _level sub_level ->
@@ -263,8 +267,7 @@ let get_level canvas ?(sub_level=Objects) level =
       ignore (aux (level - 1)) ;
       (* Adding the current level. *)
       let sub_level =
-        create_sub_levels (fun g ->
-            Dom.insertBefore canvas.svg g Js.Opt.empty) level in
+        create_sub_levels canvas level in
       canvas.levels := IMap.add level sub_level !(canvas.levels) ;
       sub_level in
   let sub_levels = aux level in
@@ -316,16 +319,16 @@ module DrawBasic : sig
   We can also specify a rotation in degrees.
   Finally, the darken boolean can be specified to make the color darker.
   The accumulator is a function that gets the raw nodes being drawn. *)
-val draw_rectangle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> Dot.color -> unit
+val draw_rectangle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> ?url:string -> Dot.color -> unit
 
 (* Same, but for a circle. *)
-val draw_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> Dot.color -> unit
+val draw_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> ?url:string -> Dot.color -> unit
 
 (* Draw a quarter of a circle, with its angle at North-West. *)
-val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> Dot.color -> unit
+val draw_quarter : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> ?url:string -> Dot.color -> unit
 
 (* Draw a shape like the LEGO half-circle of a circle, with its straight border Noth. *)
-val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> Dot.color -> unit
+val draw_half_circle : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?proportion:float -> ?rotation:float -> ?darken:bool -> ?accumulator:(element_repr -> unit) -> ?url:string -> Dot.color -> unit
 
 (* Draw the halo due to the surface reflection of the angle at the side of a circular dot. *)
 val draw_side_halo : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?diameter:int -> ?proportion:float -> ?accumulator:(element_repr -> unit) -> Dot.color -> unit
@@ -344,6 +347,9 @@ val draw_cardioid : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?dia
   extreme points of the shape. The distance is expressed as a proportion of the stud length.
   It returns an accumulator that will accumulate any given shape to the shadow. *)
 val draw_shadow : t -> (int * int) -> int -> ?height:int -> ?sub_level:sub_level_type -> ?color:Dot.color -> ?angle_left:float -> float -> ?angle_right:float -> float -> (element_repr -> unit)
+
+(* Add an external image of the given size with the provided URL in the given position. *)
+val add_external_image : t -> (int * int) -> int -> ?sub_level:sub_level_type -> ?size:(int * int) -> ?rotation:float -> ?link_url:string -> string -> unit
 
 end = struct
 
@@ -379,7 +385,7 @@ let get_style ?(darken=false) ?(lighten=false) color =
 (* Prepare the drawing coordinates and colors. *)
 let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
     ?(rotation=0.) ?(darken=false) ?(lighten=false)
-    ?(accumulator=fun _ -> ()) color build_nodes =
+    ?(accumulator=fun _ -> ()) ?(url="") color build_nodes =
   let (dx, dy) = size in
   let x', y' = x + dx, y + dy in
   let coord = get_perspective (x, y) level in
@@ -387,14 +393,20 @@ let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
   let style = get_style ~darken ~lighten color in
   let l = build_nodes coord coord' style in
   let level = get_level canvas ~sub_level level in
-  List.iter (append_to level) l ;
+  let target =
+    if url = "" then level
+    else (
+      let%svg a = "<a href="url"></a>" in
+      build_append_to level a
+    ) in
+  List.iter (append_to target) l ;
   List.iter accumulator l ;
   (* Dealing with special cases. *)
   match color with
   | Letter c ->
     let (coordx, coordy) = coord in
     let (coordx', coordy') = coord' in
-    append_to level
+    append_to target
       (let%svg elem =
          "<text x="[((coordx +. coordx') /. 2., None)]
            " y="[((coordy +. coordy') /. 2., None)]
@@ -408,8 +420,9 @@ let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
   | _ -> ()
 
 let draw_rectangle canvas xy level ?(sub_level=Objects)
-    ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
-  draw_figure canvas xy level ~sub_level ~size ~rotation ~darken ~accumulator color
+    ?(size=(1, 1)) ?(proportion=1.) ?(rotation=0.) ?(darken=false)
+    ?(accumulator=fun _ -> ()) ?(url="") color =
+  draw_figure canvas xy level ~sub_level ~size ~rotation ~darken ~accumulator ~url color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let%svg rect =
@@ -423,9 +436,10 @@ let draw_rectangle canvas xy level ?(sub_level=Objects)
     )
 
 let draw_circle canvas xy level ?(sub_level=Objects)
-    ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
+    ?(diameter=1) ?(proportion=1.) ?(rotation=0.) ?(darken=false)
+    ?(accumulator=fun _ -> ()) ?(url="") color =
   draw_figure canvas xy level ~sub_level ~size:(diameter, diameter)
-    ~rotation ~darken ~accumulator color
+    ~rotation ~darken ~accumulator ~url color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let radius = pixel_stud *. Float.of_int diameter /. 2. in
       let%svg circle =
@@ -438,8 +452,9 @@ let draw_circle canvas xy level ?(sub_level=Objects)
     )
 
 let draw_half_circle canvas xy level ?(sub_level=Objects)
-    ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
-  draw_figure canvas xy level ~sub_level ~rotation ~darken ~accumulator color
+    ?(proportion=1.) ?(rotation=0.) ?(darken=false)
+    ?(accumulator=fun _ -> ()) ?(url="") color =
+  draw_figure canvas xy level ~sub_level ~rotation ~darken ~accumulator ~url color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let delta = (1. -. proportion) *. pixel_stud /. 2. in
       let (coordx, coordy) = (coordx +. delta, coordy +. delta) in
@@ -461,9 +476,10 @@ let draw_half_circle canvas xy level ?(sub_level=Objects)
     )
 
 let draw_quarter canvas (x, y) level ?(sub_level=Objects)
-    ?(proportion=1.) ?(rotation=0.) ?(darken=false) ?(accumulator=fun _ -> ()) color =
+    ?(proportion=1.) ?(rotation=0.) ?(darken=false)
+    ?(accumulator=fun _ -> ()) ?(url="") color =
   draw_figure canvas (x, y - 1) level ~sub_level ~size:(2, 2)
-    ~rotation ~darken ~accumulator color
+    ~rotation ~darken ~accumulator ~url color
     (fun (coordx, coordy) (coordx', coordy') style ->
       let radius = pixel_stud *. proportion in
       let cx = (coordx +. coordx') /. 2. in
@@ -608,6 +624,20 @@ let draw_shadow canvas (x, y) level ?(height=1) ?(sub_level=Shadows) ?(color=Dot
     Dom.appendChild g elem2
   )
 
+let add_external_image canvas xy level ?(sub_level=Objects) ?(size=(1, 1)) ?(rotation=0.)
+    ?(link_url="") url =
+  draw_figure canvas xy level ~sub_level ~size ~rotation ~url:link_url Dot.White
+    (fun (coordx, coordy) (coordx', coordy') _style ->
+      let%svg image =
+        "<image x="(coordx, None)
+          " y="(coordy, None)
+          " width="(coordx' -. coordx, None)
+          " height="(coordy' -. coordy, None)
+          " href="url
+          " transform="(transform_rotate rotation)" />" in
+      [image]
+    )
+
 end
 
 (* Drawing LEGO pieces. *)
@@ -657,10 +687,9 @@ let circle_angle_right = 45.
 let square_angle_left rotation = rotation +. circle_angle_left
 let square_angle_right rotation = rotation +. circle_angle_right
 
+(* TODO: Using the <use> SVG element to take up less memory. *)
 
-let base_plate canvas xy ?(size=(1, 1)) color =
-  draw_rectangle canvas xy 0 ~size (remove_letters color) ;
-  (* Stud proportion. *)
+let draw_stud canvas xy color =
   let proportion = 0.57 in
   let shadow = draw_shadow canvas xy 0 proportion proportion in
   draw_circle canvas xy 0 ~sub_level:PassingThrough ~proportion ~darken:true
@@ -668,7 +697,12 @@ let base_plate canvas xy ?(size=(1, 1)) color =
   draw_circle canvas xy 1 ~proportion color ;
   draw_side_halo canvas xy 1 ~sub_level:Lights ~proportion Dot.White
 
-let square_tile canvas xy ?(level=default_level) ?(size=(1, 1)) color =
+let base_plate canvas xy ?(size=(1, 1)) color =
+  draw_rectangle canvas xy 0 ~size (remove_letters color) ;
+  draw_stud canvas xy color
+
+let square_tile canvas xy ?(level=default_level) ?(size=(1, 1))
+    ?(sticker="") ?(url="") color =
   let level = convert_level level in
   let rotation = get_rotation_size xy size in
   let proportion = 0.95 in
@@ -679,11 +713,27 @@ let square_tile canvas xy ?(level=default_level) ?(size=(1, 1)) color =
     draw_shadow canvas xy 0 ~angle_left:angle_l sq_proportion ~angle_right:angle_r sq_proportion in
   draw_rectangle canvas xy (level - 2) ~sub_level:PassingThrough ~size ~proportion ~rotation
     ~darken:true ~accumulator:shadow (remove_letters color) ;
-  draw_rectangle canvas xy level ~size ~proportion ~rotation color
+  draw_rectangle canvas xy level ~size ~proportion ~rotation ~url color ;
+  if sticker <> "" then
+    add_external_image canvas xy level ~size ~rotation ~link_url:url sticker
 
-let round_tile canvas xy ?(level=default_level) ?(diameter=1) color =
+let plate canvas xy ?(level=default_level) ?(size=(1, 1)) color =
+  square_tile canvas xy ~level ~size color ;
+  let (x0, y0) = xy in
+  let (xm, ym) =
+    let (sx, sy) = size in
+    (x0 + sx - 1, y0 + sy - 1) in
+  for x = x0 to xm do
+    for y = y0 to ym do
+      draw_stud canvas (x, y) color
+    done
+  done
+
+let round_tile canvas xy ?(level=default_level) ?(diameter=1)
+    ?(sticker="") ?(url="") color =
   let level = convert_level level in
-  let rotation = get_rotation_size ~double_rotation:true xy (diameter, diameter) in
+  let size = (diameter, diameter) in
+  let rotation = get_rotation_size ~double_rotation:true xy size in
   let proportion = 0.95 in
   let shadow = draw_shadow canvas xy 0 proportion proportion in
   if Color.is_transparent color then (
@@ -695,8 +745,10 @@ let round_tile canvas xy ?(level=default_level) ?(diameter=1) color =
   ) ;
   draw_circle canvas xy (level - 2) ~sub_level:PassingThrough ~diameter ~proportion ~rotation
     ~darken:true ~accumulator:shadow (remove_letters color) ;
-  draw_circle canvas xy level ~diameter ~proportion ~rotation color ;
-  draw_side_halo canvas xy level ~sub_level:Lights ~diameter ~proportion Dot.White
+  draw_circle canvas xy level ~diameter ~proportion ~rotation ~url color ;
+  draw_side_halo canvas xy level ~sub_level:Lights ~diameter ~proportion Dot.White ;
+  if sticker <> "" then
+    add_external_image canvas xy level ~size ~rotation ~link_url:url sticker
 
 let convert_direction = function
   | Dot.North -> 0.
@@ -704,7 +756,8 @@ let convert_direction = function
   | Dot.South -> 180.
   | Dot.East -> 90.
 
-let quarter_tile canvas xy ?(level=default_level) direction color =
+let quarter_tile canvas xy ?(level=default_level) direction
+    ?(sticker="") ?(url="") color =
   let level = convert_level level in
   let base_rotation =
     let size = (1, 1) in
@@ -724,12 +777,15 @@ let quarter_tile canvas xy ?(level=default_level) direction color =
     draw_shadow canvas xy 0 ~angle_left:angle_l proportion_l ~angle_right:angle_r proportion_r in
   draw_quarter canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
     ~darken:true ~accumulator:shadow (remove_letters color) ;
-  draw_quarter canvas xy level ~proportion ~rotation color ;
+  draw_quarter canvas xy level ~proportion ~rotation ~url color ;
   if direction = Dot.South then (
     draw_side_halo canvas xy level ~sub_level:Lights ~diameter:2 ~proportion Dot.White
-  )
+  ) ;
+  if sticker <> "" then
+    add_external_image canvas xy level ~rotation ~link_url:url sticker
 
-let half_circle_tile canvas xy ?(level=default_level) direction color =
+let half_circle_tile canvas xy ?(level=default_level) direction
+    ?(sticker="") ?(url="") color =
   let level = convert_level level in
   let base_rotation =
     let size = (1, 1) in
@@ -749,9 +805,11 @@ let half_circle_tile canvas xy ?(level=default_level) direction color =
     draw_shadow canvas xy 0 ~angle_left:angle_l proportion_l ~angle_right:angle_r proportion_r in
   draw_half_circle canvas xy (level - 2) ~sub_level:PassingThrough ~proportion ~rotation
     ~darken:true ~accumulator:shadow (remove_letters color) ;
-  draw_half_circle canvas xy level ~proportion ~rotation color ;
+  draw_half_circle canvas xy level ~proportion ~rotation ~url color ;
   if direction = Dot.South || direction = Dot.West then
-    draw_side_halo canvas xy level ~sub_level:Lights ~proportion Dot.White
+    draw_side_halo canvas xy level ~sub_level:Lights ~proportion Dot.White ;
+  if sticker <> "" then
+    add_external_image canvas xy level ~rotation ~link_url:url sticker
 
 end
 
