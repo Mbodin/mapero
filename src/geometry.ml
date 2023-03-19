@@ -157,7 +157,9 @@ let add_line m xy xy'
     let next_yt yt = if slope > 0. then (yt + 1) else (yt - 1) in
     let (end_x, end_y) = convert_coordinates_from_real (x', y') in
     let rec aux m (xc, yc) =
-      if (xc, yc) = (end_x, end_y) || not (within_bounds m (xc, yc)) then m
+      if (xc, yc) = (end_x, end_y) || xc > end_x || (if slope > 0. then (yc > end_y) else (yc < end_y)) then
+        (* We already passed the final point we needed to draw. *)
+        m
       else
         let draw m xy is_core adaptive_style =
           let draw style =
@@ -194,24 +196,21 @@ let add_line m xy xy'
     let draw_extremes m xy =
       add_PoI_int m xy priority level style color in
     let start_xy =
-      let xy =
-        if x < 0. then (0., y_at 0)
+      let (x, y) =
+        (* If x is far away from the bounding box, we move it just at the limit. *)
+        if x < -1. then (-1., y_at (-1))
         else (x, y) in
-      let xy = convert_coordinates_from_real xy in
-      if within_bounds m xy then xy
-      else
-        let (_, y) = xy in
-        (* Even when normalising to x = 0, we are out of bounds. *)
-        if y < 0 then (Float.to_int (x_at 0), 0)
-        else (
-          if (y >= m.size.y) then
-            (Float.to_int (x_at (m.size.y - 1)), m.size.y - 1)
-          else xy (* We are probably already out anyway. *)
-        ) in
-    (* TODO: As-is, if the extremes are out of bounds, then the drawn extremeties will be
-      displayed as half-circle instead of quarters or square. *)
-    (* TODO: As-is, it seems that sometimes, the line can have a startint point after the end,
-      and a line that should not have been displayed is prolongated away into the canvas. *)
+      let xy =
+        (* We do a similar check for y. *)
+        if slope > 0. then
+          if y < -1. then (x_at (-1), -1.)
+          else (x, y)
+        else (* slope < 0. *)
+          let size_y = Float.of_int m.size.y in
+          if y > size_y then
+            (x_at m.size.y, size_y)
+          else (x, y) in
+      convert_coordinates_from_real xy in
     let m = draw_extremes m start_xy in
     let m = draw_extremes m (end_x, end_y) in
     (* Drawing in between. *)
