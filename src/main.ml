@@ -20,7 +20,7 @@ let map_settings = ref default_map_state
 
 (* Building an Overpass query, as a function of the current settings. *)
 let overpass_query map_info =
-  ignore Settings.objects (* TODO *) ;
+  ignore Settings.styles (* TODO *) ;
   ()
 
 (* Draw the map on a Geometry.t object. *)

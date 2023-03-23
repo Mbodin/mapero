@@ -1,3 +1,6 @@
 
-val objects : (Overpass.kind * Overpass.attributes * Geometry.style * Dot.color) list
+val styles : Osm.styles
+
+(* LATER: At some point, it would be interesting to have several styles depending
+  on the zoom level. *)
 

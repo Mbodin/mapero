@@ -1,14 +1,7 @@
 
-type kind =
-  | Node
-  | Way
-  | Polygon
+(* A response is decomposed into two parts: the one already present in the cache,
+  and the one that will be ready once we got the full response from the Internet. *)
+type 'a response = 'a * 'a Lwt.t
 
-
-(* A key or a value, which may be expressed either as an exact string or a regexp. *)
-type estr =
-  | Exact of string
-  | Regexp of string
-
-type attributes = (estr (* key *) * estr (* value *)) list
+(* TODO: The request API. *)
 

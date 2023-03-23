@@ -1,48 +1,49 @@
 
-let exact l = List.map (fun (k, v) -> (Overpass.Exact k, Overpass.Exact v)) l
-let regexp l = List.map (fun (k, v) -> (Overpass.Regexp k, Overpass.Regexp v)) l
-let vregexp l = List.map (fun (k, v) -> (Overpass.Exact k, Overpass.Regexp v)) l
+open Osm
+
+let exact l = List.map (fun (k, v) -> (Exact k, Exact v)) l
+let regexp l = List.map (fun (k, v) -> (Regexp k, Regexp v)) l
+let vregexp l = List.map (fun (k, v) -> (Exact k, Regexp v)) l
 let rec expand cxt = function
   | [] -> cxt []
   | (k, vs) :: l ->
-    List.concat_map (fun v -> expand (fun l -> cxt ((Overpass.Exact k, Overpass.Exact v) :: l)) l) vs
+    List.concat_map (fun v -> expand (fun l -> cxt ((Exact k, Exact v) :: l)) l) vs
 
-let node l ?(style = Geometry.Round) color =
-  [(Overpass.Node, exact l, style, color)]
+let node l color =
+  [(Node, exact l, color)]
 
-let rnode l ?(style = Geometry.Round) color =
-  [(Overpass.Node, regexp l, style, color)]
+let rnode l color =
+  [(Node, regexp l, color)]
 
-let rvnode l ?(style = Geometry.Round) color =
-  [(Overpass.Node, vregexp l, style, color)]
+let rvnode l color =
+  [(Node, vregexp l, color)]
 
-let enode l ?(style = Geometry.Round) color =
-  expand (fun l -> [(Overpass.Node, l, style, color)]) l
+let enode l color =
+  expand (fun l -> [(Node, l, color)]) l
 
-let way l ?(style = Geometry.Adaptive) color =
-  [(Overpass.Way, exact l, style, color)]
+let way l color =
+  [(Way, exact l, color)]
 
-let rway l ?(style = Geometry.Adaptive) color =
-  [(Overpass.Way, regexp l, style, color)]
+let rway l color =
+  [(Way, regexp l, color)]
 
-let vrway l ?(style = Geometry.Adaptive) color =
-  [(Overpass.Way, vregexp l, style, color)]
+let vrway l color =
+  [(Way, vregexp l, color)]
 
-let eway l ?(style = Geometry.Adaptive) color =
-  expand (fun l -> [(Overpass.Way, l, style, color)]) l
+let eway l color =
+  expand (fun l -> [(Way, l, color)]) l
 
-let poly l ?(style = Geometry.Adaptive) color =
-  [(Overpass.Polygon, exact l, style, color)]
+let poly l color =
+  [(Polygon, exact l, color)]
 
-let rpoly l ?(style = Geometry.Adaptive) color =
-  [(Overpass.Polygon, regexp l, style, color)]
+let rpoly l color =
+  [(Polygon, regexp l, color)]
 
-let vrpoly l ?(style = Geometry.Adaptive) color =
-  [(Overpass.Polygon, vregexp l, style, color)]
+let vrpoly l color =
+  [(Polygon, vregexp l, color)]
 
-let epoly l ?(style = Geometry.Adaptive) color =
-  expand (fun l -> [(Overpass.Polygon, l, style, color)]) l
-
+let epoly l color =
+  expand (fun l -> [(Polygon, l, color)]) l
 
 
 let objects =
@@ -67,4 +68,50 @@ let objects =
     poly [("leisure", "playground")] Satin_trans_clear ;
     poly [("leisure", "parc")] Yellowish_green
   ]
+
+
+let empty_styles = {
+  nodes = [] ;
+  ways = [] ;
+  polygons = []
+}
+
+
+let styles =
+  let objects = List.to_seq (List.rev objects) in
+  Seq.fold_lefti (fun styles level (kind, attributes, color) ->
+      match kind with
+      | Node ->
+        let style = {
+          style = Geometry.Round ;
+          color ;
+          level ;
+          priority = Structures.High
+        } in
+        { styles with nodes = (attributes, style) :: styles.nodes }
+      | Way ->
+        let base_style = {
+          style = Geometry.Adaptive ;
+          color ;
+          level ;
+          priority = Structures.Medium
+        } in
+        let style = {
+          core = base_style ;
+          non_core = Some { base_style with priority = Structures.VeryLow }
+        } in
+        { styles with ways = (attributes, style) :: styles.ways }
+      | Polygon ->
+        let base_style = {
+          style = Geometry.Adaptive ;
+          color ;
+          level ;
+          priority = Structures.Low
+        } in
+        let style = {
+          border = base_style ;
+          inner = Some { base_style with style = Geometry.Round ; priority = Structures.VeryLow }
+        } in
+        { styles with polygons = (attributes, style) :: styles.polygons }
+    ) empty_styles objects
 
