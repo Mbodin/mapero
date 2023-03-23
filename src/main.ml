@@ -113,7 +113,7 @@ let draw canvas =
           List.iteri (fun i c ->
               plate canvas coord ~level:i c
             ) l ;
-          Option.iter (print_piece_with_action canvas coord ~level:(List.length l)) o
+          Option.iter (print_piece_with_action canvas coord ~level:(1 + List.length l)) o
         )
       )) map
 

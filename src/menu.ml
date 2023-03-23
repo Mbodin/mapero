@@ -33,6 +33,13 @@ let get_size m =
   if sx = 0 then (0, 0)
   else (sx, Array.length (m.(0)))
 
+(* Check whether the given coordinates are valid. *)
+let check_coords m (x, y) =
+  let (sx, sy) = get_size m in
+  x >= 0 && x < sx
+  && y >= 0 && y < sy
+
+
 (* Return the color of a piece.
   Can't be called on Occupied. *)
 let piece_color = function
@@ -53,11 +60,11 @@ let build_sequences m (x1, y1) (x2, y2) =
   let (y1, y2) = if y1 < y2 then (y1, y2) else (y2, y1) in
   let x1 = max x1 0 in
   let y1 = max y1 0 in
+  let x2 = max x2 0 in
+  let y2 = max y2 0 in
   let (x2, y2) =
     let (sx, sy) = get_size m in
     (min x2 (sx - 1), min y2 (sy - 1)) in
-  let x2 = max x1 x2 in
-  let y2 = max y1 y2 in
   let seqx = Seq.init (1 + x2 - x1) (fun x -> x + x1) in
   let seqy = Seq.init (1 + y2 - y1) (fun y -> y + y1) in
   (seqx, seqy)
@@ -65,8 +72,9 @@ let build_sequences m (x1, y1) (x2, y2) =
 (* Determine the level needed to be above everything drawn between these two points. *)
 let get_level m (x1, y1) (x2, y2) =
   let (seqx, seqy) = build_sequences m (x1, y1) (x2, y2) in
-  Seq.fold_left (fun x i ->
-    Seq.fold_left (fun y i ->
+  Seq.fold_left (fun i x ->
+    Seq.fold_left (fun i y ->
+      assert (check_coords m (x, y)) ;
       let (_, j, _) = m.(x).(y) in
       max i j
     ) i seqy
@@ -78,6 +86,7 @@ let flatten_to_level m (x1, y1) (x2, y2) level c =
   (* Draw the block, completing the levels if needed. *)
   Seq.iter (fun x ->
     Seq.iter (fun y ->
+      assert (check_coords m (x, y)) ;
       let (l, i, _) = m.(x).(y) in
       assert (i <= level) ;
       let l = List.init (level - i) (fun _ -> c) @ l in
@@ -104,10 +113,12 @@ let add_piece m (x, y) ?(action=NoAction) p =
     let (seqx, seqy) = build_sequences m (x, y) (x + sx, y + sy) in
     Seq.iter (fun x ->
       Seq.iter (fun y ->
+        assert (check_coords m (x, y)) ;
         let (l, i, _) = m.(x).(y) in
         m.(x).(y) <- (l, i, Some (Occupied, action))
       ) seqy
     ) seqx ;
+    assert (check_coords m (x, y)) ;
     let (l, i, _) = m.(x).(y) in
     m.(x).(y) <- (l, i, Some (p, action)) ;
     m
@@ -115,9 +126,14 @@ let add_piece m (x, y) ?(action=NoAction) p =
 let add_text m (x, y) ?(action=NoAction) txt =
   let c = Dot.White in
   (* TODO: Split according to Unicode characters, not just bytes. *)
-  flatten m (x, y) (x + String.length txt, y) c ;
-  let seqx = Seq.init (String.length txt) (fun dx -> x + dx) in
+  let len = String.length txt in
+  flatten m (x, y) (x + len - 1, y) c ;
+  let len =
+    let max_x = fst (get_size m) - 1 in
+    if x + len - 1 > max_x then (max_x - x) else len in
+  let seqx = Seq.init len (fun dx -> x + dx) in
   Seq.iteri (fun d x ->
+    assert (check_coords m (x, y)) ;
     let (l, i, _) = m.(x).(y) in
     let letter = (Dot.Round, Dot.Letter (Printf.sprintf "%c" (txt.[d]))) in
     m.(x).(y) <- (l, i, Some (Dot letter, action))

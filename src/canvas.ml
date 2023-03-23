@@ -258,6 +258,7 @@ let clear canvas =
 
 (* Fetch the group corresponding to the given level. *)
 let get_level canvas ?(sub_level=Objects) level =
+  assert (level >= 0) ;
   let rec aux level =
     assert (level >= 0) ;
     match IMap.find_opt level !(canvas.levels) with
@@ -650,7 +651,9 @@ module Lego = struct
 
 (* The following two constant converts the levels from the current system to the old one. *)
 let default_level = 1
-let convert_level level = 2 * level
+let convert_level level =
+  assert (level >= 1) ;
+  2 * level
 
 
 open DrawBasic
