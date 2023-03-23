@@ -4,21 +4,6 @@ type action =
   | Link of string
   | Action of (unit -> unit)
 
-type t =
-  (Dot.color list (* The list of plates and their color below the main piece. The first element is topmost. *)
-   * int (* The length of the previous list. *)
-   * (piece * action) option) array array
-
-let to_matrix m =
-  Array.map (Array.map (fun (l, n, o) -> (assert (n = List.length l) ; (List.rev l, o)))) m
-
-let empty (x, y) = Array.make_matrix x y ([], None)
-
-let get_size m =
-  let sx = Array.length x in
-  if sx = 0 then (0, 0)
-  else (sx, Array.length x[0])
-
 type large_piece = {
   start : int * int ;
   dim : int * int ;
@@ -32,6 +17,21 @@ type piece =
   | Tile of large_piece
   | Round of large_piece
   | Occupied
+
+type t =
+  (Dot.color list (* The list of plates and their color below the main piece. The first element is topmost. *)
+   * int (* The length of the previous list. *)
+   * (piece * action) option) array array
+
+let to_matrix m =
+  Array.map (Array.map (fun (l, n, o) -> (assert (n = List.length l) ; (List.rev l, o)))) m
+
+let empty (x, y) = Array.make_matrix x y ([], 0, None)
+
+let get_size m =
+  let sx = Array.length m in
+  if sx = 0 then (0, 0)
+  else (sx, Array.length (m.(0)))
 
 (* Return the color of a piece.
   Can't be called on Occupied. *)
@@ -67,7 +67,7 @@ let get_level m (x1, y1) (x2, y2) =
   let (seqx, seqy) = build_sequences m (x1, y1) (x2, y2) in
   Seq.fold_left (fun x i ->
     Seq.fold_left (fun y i ->
-      let (_, j, _) = m[x][y] in
+      let (_, j, _) = m.(x).(y) in
       max i j
     ) i seqy
   ) 0 seqx
@@ -78,20 +78,21 @@ let flatten_to_level m (x1, y1) (x2, y2) level c =
   (* Draw the block, completing the levels if needed. *)
   Seq.iter (fun x ->
     Seq.iter (fun y ->
-      let (l, i, _) = m[x][y] in
+      let (l, i, _) = m.(x).(y) in
       assert (i <= level) ;
       let l = List.init (level - i) (fun _ -> c) @ l in
-      m[x][y] := (l, level, None)
+      m.(x).(y) <- (l, level, None)
     ) seqy
   ) seqx
 
 let add_block m (x1, y1) (x2, y2) c =
-  let level = 1 + get_level (x1, y1) (x2, y2) in
-  flatten_to_level m (x1, y1) (x2, y2) level c
+  let level = 1 + get_level m (x1, y1) (x2, y2) in
+  flatten_to_level m (x1, y1) (x2, y2) level c ;
+  m
 
 (* Very similar to add_block, but without adding a level. *)
 let flatten m (x1, y1) (x2, y2) c =
-  let level = get_level (x1, y1) (x2, y2) in
+  let level = get_level m (x1, y1) (x2, y2) in
   flatten_to_level m (x1, y1) (x2, y2) level c
 
 let add_piece m (x, y) ?(action=NoAction) p =
@@ -103,21 +104,23 @@ let add_piece m (x, y) ?(action=NoAction) p =
     let (seqx, seqy) = build_sequences m (x, y) (x + sx, y + sy) in
     Seq.iter (fun x ->
       Seq.iter (fun y ->
-        let (l, i, _) = m[x][y] in
-        m[x][y] := (l, i, Some (Occupied, action))
+        let (l, i, _) = m.(x).(y) in
+        m.(x).(y) <- (l, i, Some (Occupied, action))
       ) seqy
     ) seqx ;
-    let (l, i, _) = m[x][y] in
-    m[x][y] := (l, i, Some (p, action))
+    let (l, i, _) = m.(x).(y) in
+    m.(x).(y) <- (l, i, Some (p, action)) ;
+    m
 
-let add_text m (x, y) ?(action=NoAction) str =
+let add_text m (x, y) ?(action=NoAction) txt =
   let c = Dot.White in
   (* TODO: Split according to Unicode characters, not just bytes. *)
-  flatten m (x, y) (x + String.length str, y) c ;
-  let seqx = Seq.init (String.length srt) (fun dx -> x + dx) in
+  flatten m (x, y) (x + String.length txt, y) c ;
+  let seqx = Seq.init (String.length txt) (fun dx -> x + dx) in
   Seq.iteri (fun d x ->
-    let (l, i, _) = m[x][y] in
-    let letter = Dot.Letter (Printf.sprintf "%c" (str[d])) in
-    m[x][y] := (l, i, Some (Dot letter, action))
-  ) seqx
+    let (l, i, _) = m.(x).(y) in
+    let letter = (Dot.Round, Dot.Letter (Printf.sprintf "%c" (txt.[d]))) in
+    m.(x).(y) <- (l, i, Some (Dot letter, action))
+  ) seqx ;
+  m
 

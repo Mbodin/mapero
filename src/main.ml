@@ -23,15 +23,9 @@ let overpass_query map_info =
   ignore Settings.objects (* TODO *) ;
   ()
 
-(* Add a text in the right low angle. *)
-let add_text_angle map txt =
-  let (size_x, _size_y) = Geometry.get_size map in
-  Geometry.add_text map (size_x - String.length txt, 0) ~priority:VeryHigh txt
-
 (* Draw the map on a Geometry.t object. *)
 let draw_map map =
   let open Geometry in
-  let map = add_text_angle map "TEST" in
   let map =
     add_PoI map (1., 5.) ~level:1
       ~style:(Geometry.Pattern (fun _ -> Dot.Half_circle Dot.North)) Dot.Yellowish_green in
@@ -51,36 +45,76 @@ let draw_map map =
   (* TODO *)
   ignore map
 
+(* Draw the menu on a Menu.t object. *)
+let draw_menu menu =
+  let open Menu in
+  (* Add a text in the right low angle. *)
+  let (size_x, _size_y) = Menu.get_size menu in
+  let txt = "TEST" in
+  let menu = Menu.add_text menu (size_x - String.length txt, 0) txt in
+  ignore menu
+
+
+(* Get optional URL of an action. Default to the empty string. *)
+let action_url = function
+  | Menu.Link url -> url
+  | _ -> ""
+
 (* Print the dot onto the canvas. *)
-let print_dot canvas coord (shape, color) =
+let print_dot canvas coord ?(level=1) ?(action=Menu.NoAction) (shape, color) =
   let open Canvas.Lego in
   match shape with
-  | Dot.Round -> round_tile canvas coord color
-  | Dot.Square -> square_tile canvas coord color
-  | Dot.Half_circle dir -> half_circle_tile canvas coord dir color
-  | Dot.Quarter dir -> quarter_tile canvas coord dir color
+  | Dot.Round -> round_tile canvas coord ~level ~url:(action_url action) color
+  | Dot.Square -> square_tile canvas coord ~level  ~url:(action_url action) color
+  | Dot.Half_circle dir -> half_circle_tile canvas coord ~level dir ~url:(action_url action) color
+  | Dot.Quarter dir -> quarter_tile canvas coord ~level dir ~url:(action_url action) color
+
+(* Print onto the canvas a piece, associated with a Menu action. *)
+let print_piece_with_action canvas coord ?(level=1) (piece, action) =
+  let open Canvas.Lego in
+  match piece with
+  | Menu.Dot d -> print_dot canvas coord ~level ~action d
+  | Menu.Plate p -> plate canvas coord ~level ~size:p.dim p.color
+  | Menu.Tile p ->
+    square_tile canvas coord ~level ~size:p.dim
+      ~sticker:p.sticker ~url:(action_url action) p.color
+  | Menu.Round p ->
+    round_tile canvas coord ~level ~diameter:(fst p.dim)
+      ~sticker:p.sticker ~url:(action_url action) p.color
+  | Menu.Occupied -> ()
 
 let draw canvas =
   Canvas.clear canvas ;
   (* Initialising a new map to draw on.  *)
   let size = Canvas.get_size canvas in
   let map = Geometry.empty size in
+  let menu = Menu.empty size in
   (* Display the actual map within it. *)
   draw_map map ;
+  draw_menu menu ;
   (* Print this map onto the canvas. *)
   let map = Geometry.to_dot_matrix map in
+  let menu = Menu.to_matrix menu in
   let background = Dot.Light_aqua in (* TODO: Make it depend on the local climate. *)
   let min_coords = Canvas.get_min_coords canvas in
   Array.iteri (fun x ->
     Array.iteri (fun y dot ->
+        let (l, o) = menu.(x).(y) in
         (* We first convert the coordinate systems. *)
         (* SVG makes the y axes run from top to bottom: we put it back from bottom to top. *)
         let y = snd size - 1 - y in
-        let (x, y) = (x + fst min_coords, y + snd min_coords) in
+        let coord = (x + fst min_coords, y + snd min_coords) in
         (* Then draw the object. *)
         let open Canvas.Lego in
-        base_plate canvas (x, y) background ;
-        Option.iter (print_dot canvas (x, y)) dot
+        base_plate canvas coord background ;
+        if l = [] && o = None then
+          Option.iter (print_dot canvas coord) dot
+        else (
+          List.iteri (fun i c ->
+              plate canvas coord ~level:i c
+            ) l ;
+          Option.iter (print_piece_with_action canvas coord ~level:(List.length l)) o
+        )
       )) map
 
 let _ =

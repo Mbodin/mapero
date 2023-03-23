@@ -6,6 +6,9 @@ type t
 (* Initialise the menu with its dimensions. *)
 val empty : (int * int) -> t
 
+(* Return the size of the object. *)
+val get_size : t -> (int * int)
+
 (* Some printing actions can associate interaction actions to elements drawn in the menu. *)
 type action =
   | NoAction (* No interaction *)
