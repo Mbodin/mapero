@@ -1,6 +1,6 @@
 
 (* A type representing the map. *)
-(* Warning: current implementation is imperative. *)
+(* Warning: implementation is imperative. *)
 type t
 
 (* Given the dimensions, create an empty map. *)
