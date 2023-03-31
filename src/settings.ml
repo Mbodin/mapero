@@ -46,8 +46,7 @@ let epoly l color =
   expand (fun l -> [(Polygon, l, color)]) l
 
 
-let objects =
-  List.flatten Dot.[
+let objects = Dot.[
     (* Main PoIs I'm interested at *)
     node [("natural", "tree")] Bright_green ;
     node [("leisure", "playground")] Satin_trans_clear ;
@@ -78,8 +77,16 @@ let empty_styles = {
 
 
 let styles =
-  let objects = List.to_seq (List.rev objects) in
-  Seq.fold_lefti (fun styles level (kind, attributes, color) ->
+  let objects =
+    let objects = List.rev objects in
+    let objects = List.mapi (fun level objl -> (level, objl)) objects in
+    let objects = List.to_seq objects in
+    let objects =
+      Seq.flat_map (fun (level, objl) ->
+        let objl = List.to_seq objl in
+        Seq.map (fun (kind, attributes, color) -> (kind, attributes, color, level)) objl) objects in
+    objects in
+  Seq.fold_left (fun styles (kind, attributes, color, level) ->
       match kind with
       | Node ->
         let style = {
