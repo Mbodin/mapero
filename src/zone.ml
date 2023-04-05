@@ -96,60 +96,57 @@ let negation = function
   | Horizontal (t1, x, t2) -> Horizontal (negation t1, x, negation t2)
   | Vertical (t1, y, t2) -> Vertical (negation t1, y, negation t2)
 
-(* Common part between intersection and union. *)
-let rec all_divides other t1 t2 =
-  match t1, t2 with
-  | Horizontal (t1, x, t2), Horizontal (t1', x', t2') ->
-    let ((t1, x, t2), (t1', x', t2')) =
-      if x < x' then
-        ((t1, x, t2), (t1', x', t2'))
-      else ((t1', x', t2'), (t1, x, t2)) in
-    assert (x <= x') ;
-    Horizontal (t1, x, Horizontal (all_divides t2 t1', x', t2')
-  | Vertical (t1, x, t2), Vertical (t1', x', t2') ->
-    let ((t1, y, t2), (t1', y', t2')) =
-      if y < y' then
-        ((t1, y, t2), (t1', y', t2'))
-      else ((t1', y', t2'), (t1, y, t2)) in
-    assert (y <= y') ;
-    Vertical (t1, y, Vertical (all_divides t2 t1', y', t2')
-  | Horizontal (t1, x, t2), Vertical (t1', y, t2')
-  | Vertical (t1', y, t2'), Horizontal (t1, x, t2) ->
-    Horizontal (Vertical (all_divides t1 t1', y,
-                          all_divides t1 t2'),
-                x, Vertical (all_divides t2 t1', y,
-                             all_divides t2 t2'))
-  | t1, t2 -> other t1 t2
-
 (* Intersection of two trees. *)
-let intersection =
-  all_divides (fun t1 t2 ->
-    match t1, t2 with
-    | Empty, _ | _, Empty -> Empty
-    | Full, t | t, Full -> t
-    | _, _ -> assert false)
+let rec intersection t = function
+  | Empty -> Empty
+  | Full -> t
+  | Horizontal (t1, x, t2) ->
+    let t1 = intersection (restrict_before_x x t) t1 in
+    let t2 = intersection (restrict_after_x x t) t2 in
+    Horizontal (t1, x, t2)
+  | Vertical (t1, y, t2) ->
+    let t1 = intersection (restrict_before_y y t) t1 in
+    let t2 = intersection (restrict_after_y y t) t2 in
+    Vertical (t1, y, t2)
 
 (* Union of two trees. *)
-let union =
-  all_divides (fun t1 t2 ->
-    match t1, t2 with
-    | Full, _ | _, Full -> Full
-    | Empty, t | t, Empty -> t
-    | _, _ -> assert false)
+let rec union t = function
+  | Empty -> t
+  | Full -> Full
+  | Horizontal (t1, x, t2) ->
+    let t1 = intersection (restrict_before_x x t) t1 in
+    let t2 = intersection (restrict_after_x x t) t2 in
+    Horizontal (t1, x, t2)
+  | Vertical (t1, y, t2) ->
+    let t1 = intersection (restrict_before_y y t) t1 in
+    let t2 = intersection (restrict_after_y y t) t2 in
+    Vertical (t1, y, t2)
+
+(* Split a list in two at the given index. *)
+let split_list i =
+  let rec aux acc i = function
+    | l when i = 0 -> (List.rev acc, l)
+    | x :: l -> aux (x :: acc) (i - 1) l
+    | [] ->
+      assert (i > 0) ;
+      assert false
 
 (* A (costly) function to simplify bounded trees. *)
 let optimise ((bbox, t) : t) =
   (* Create a balanced tree from a list. *)
   let make_tree constr l =
-    let rec aux (s, l) =
+    let rec aux s l =
       (* Invariant: List.length l = s > 0. *)
       if s = 1 then
         (match l with
-         | [(_, t)] -> t
+         | [(x, t)] -> (x, t)
          | _ -> assert false)
       else
+        let s' = s / 2 in
+        let (l1, l2) = split_list s' l in
+        constr (aux s' l1) (aux (s - s') l2)
       in
-    aux (List.length l, l) in
+    snd (aux (List.length l) l) in
   (* Remove the dupplicates in a list of pointed trees. *)
   let rec remove_duplicates = function
     | (x, t1) :: (_, t2) :: l when t1 = t2 -> remove_duplicates ((x, t1) :: l)
@@ -166,8 +163,8 @@ let optimise ((bbox, t) : t) =
     | t -> [(bbox.min_x, optimise_vertical bbox t)]
   and optimise_horizontal bbox t =
     let l = list_horizontal bbox t in
-    make_tree (fun (_x1, t1) (x2, t2) ->
-      Horizontal (t1, x2, t2)) l
+    make_tree (fun (x1, t1) (x2, t2) ->
+      (x1, Horizontal (t1, x2, t2))) l
 
 
 (* TODO *)
@@ -211,7 +208,7 @@ let optimise bboxes = (* TODO *) bboxes
 
 let empty = []
 
-let add zone box =
+let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth) zone box =
   (* First, we get all the relevant subzones. *)
   let (relevant, other) = List.partition (fun (b, _) -> overlap box b) in
   match relevant with
