@@ -25,5 +25,5 @@ val to_bbox : Geometry.real_coordinates -> Geometry.real_coordinates -> bbox
   overlap, but small rectangles that are close one with the other will be merged.
   A safe scale can be provided (for example 1.5) to enable the list of bbox returned to cover
   up to safe times the argument bbox in coverage. *)
-val add : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe:float -> t -> bbox -> t * bbox list
+val add : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float -> t -> bbox -> t * bbox list
 
