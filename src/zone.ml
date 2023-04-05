@@ -47,21 +47,130 @@ let inter b1 b2 = {
 type tree =
   | Full (* The provided zone is fully covered. *)
   | Empty (* The provided zone is not covered at all. *)
-  | Division of {
-      (* The provided zone is divised into four smaller zones. *)
-      sep_x : float (* The x coordinate where the division happens *) ;
-      sep_y : float (* The y coordinate where the division happens *) ;
-      sub_nw : tree (* North-West subzone *) ;
-      sub_ne : tree (* North-East subzone *) ;
-      sub_se : tree (* South-East subzone *) ;
-      sub_sw : tree (* South-West subzone *)
-    }
+  | Horizontal of tree * float * tree (* Horizontal division, with the middle x coordinate *)
+  | Vertical of tree * float * tree (* Vertical division, with the middle y coordinate *)
 
 (* We associate this spatial information with the external bounding box to get a precise zone. *)
-type subzone = bbox * tree
+type t = bbox * tree
 
-(* Several zones might be disjoint: we store a list of them. *)
-type t = subzone list
+
+(* Restriction functions of a tree along a semi-line. *)
+
+let rec restrict_gen fx fy = function
+  | Full -> Full
+  | Empty -> Empty
+  | Horizontal (t1, x, t2) ->
+    let t1 = restrict_gen fx fy t1 in
+    let t2 = restrict_gen fx fy t2 in
+    fx t1 x t2
+  | Vertical (t1, y, t2) ->
+    let t1 = restrict_gen fx fy t1 in
+    let t2 = restrict_gen fx fy t2 in
+    fy t1 y t2
+
+let restrict_before_x x0 =
+  restrict_gen
+    (fun t1 x t2 -> if x >= x0 then t1 else Horizontal (t1, x, t2))
+    (fun t1 y t2 -> Vertical (t1, y, t2))
+
+let restrict_after_x x0 =
+  restrict_gen
+    (fun t1 x t2 -> if x <= x0 then t2 else Horizontal (t1, x, t2))
+    (fun t1 y t2 -> Vertical (t1, y, t2))
+
+let restrict_before_y y0 =
+  restrict_gen
+    (fun t1 x t2 -> Horizontal (t1, x, t2))
+    (fun t1 y t2 -> if y >= y0 then t1 else Horizontal (t1, y, t2))
+
+let restrict_after_y y0 =
+  restrict_gen
+    (fun t1 x t2 -> Horizontal (t1, x, t2))
+    (fun t1 y t2 -> if y <= y0 then t2 else Horizontal (t1, y, t2))
+
+
+(* Negation of a tree. *)
+let negation = function
+  | Full -> Empty
+  | Empty -> Full
+  | Horizontal (t1, x, t2) -> Horizontal (negation t1, x, negation t2)
+  | Vertical (t1, y, t2) -> Vertical (negation t1, y, negation t2)
+
+(* Common part between intersection and union. *)
+let rec all_divides other t1 t2 =
+  match t1, t2 with
+  | Horizontal (t1, x, t2), Horizontal (t1', x', t2') ->
+    let ((t1, x, t2), (t1', x', t2')) =
+      if x < x' then
+        ((t1, x, t2), (t1', x', t2'))
+      else ((t1', x', t2'), (t1, x, t2)) in
+    assert (x <= x') ;
+    Horizontal (t1, x, Horizontal (all_divides t2 t1', x', t2')
+  | Vertical (t1, x, t2), Vertical (t1', x', t2') ->
+    let ((t1, y, t2), (t1', y', t2')) =
+      if y < y' then
+        ((t1, y, t2), (t1', y', t2'))
+      else ((t1', y', t2'), (t1, y, t2)) in
+    assert (y <= y') ;
+    Vertical (t1, y, Vertical (all_divides t2 t1', y', t2')
+  | Horizontal (t1, x, t2), Vertical (t1', y, t2')
+  | Vertical (t1', y, t2'), Horizontal (t1, x, t2) ->
+    Horizontal (Vertical (all_divides t1 t1', y,
+                          all_divides t1 t2'),
+                x, Vertical (all_divides t2 t1', y,
+                             all_divides t2 t2'))
+  | t1, t2 -> other t1 t2
+
+(* Intersection of two trees. *)
+let intersection =
+  all_divides (fun t1 t2 ->
+    match t1, t2 with
+    | Empty, _ | _, Empty -> Empty
+    | Full, t | t, Full -> t
+    | _, _ -> assert false)
+
+(* Union of two trees. *)
+let union =
+  all_divides (fun t1 t2 ->
+    match t1, t2 with
+    | Full, _ | _, Full -> Full
+    | Empty, t | t, Empty -> t
+    | _, _ -> assert false)
+
+(* A (costly) function to simplify bounded trees. *)
+let optimise ((bbox, t) : t) =
+  (* Create a balanced tree from a list. *)
+  let make_tree constr l =
+    let rec aux (s, l) =
+      (* Invariant: List.length l = s > 0. *)
+      if s = 1 then
+        (match l with
+         | [(_, t)] -> t
+         | _ -> assert false)
+      else
+      in
+    aux (List.length l, l) in
+  (* Remove the dupplicates in a list of pointed trees. *)
+  let rec remove_duplicates = function
+    | (x, t1) :: (_, t2) :: l when t1 = t2 -> remove_duplicates ((x, t1) :: l)
+    | (x, t) :: l -> (x, t) :: remove_duplicates l in
+  (* Return a horizontal list of subtrees, each associated with the x coordinate they start with. *)
+  let rec list_horizontal bbox = function
+    | Horizontal (t1, x, t2) ->
+      if x <= bbox.min_x then list_horizontal bbox t2
+      else if x >= bbox.max_x then list_horizontal bbox t1
+      else
+        let l1 = list_horizontal {bbox with max_x = x} t1 in
+        let l2 = list_horizontal {bbox with min_x = x} t2 in
+        remove_duplicates (l1 @ l2)
+    | t -> [(bbox.min_x, optimise_vertical bbox t)]
+  and optimise_horizontal bbox t =
+    let l = list_horizontal bbox t in
+    make_tree (fun (_x1, t1) (x2, t2) ->
+      Horizontal (t1, x2, t2)) l
+
+
+(* TODO *)
 
 
 (* Merge two subzones. *)

@@ -1,5 +1,5 @@
 {
-  "checksum": "bb2ed7f383d5f800c59a52adfe709d2b",
+  "checksum": "ef957cf1dba3f586f7779107ac955795",
   "root": "mapero@link-dev:./package.json",
   "node": {
     "ocaml@4.14.0@d41d8cd9": {
@@ -28,7 +28,7 @@
       "overrides": [],
       "dependencies": [
         "ocaml@4.14.0@d41d8cd9", "@opam/tyxml-ppx@opam:4.5.0@984a4965",
-        "@opam/tyxml@opam:4.5.0@0a609297",
+        "@opam/tyxml@opam:4.5.0@0a609297", "@opam/react@opam:1.2.2@e0f4480e",
         "@opam/ocamlfind@opam:1.9.5@e83abf74",
         "@opam/lwt_ppx@opam:2.1.0@f0dd3e73",
         "@opam/js_of_ocaml-tyxml@opam:4.1.0@e316e946",
