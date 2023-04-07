@@ -1,85 +1,4 @@
 
-type bbox = {
-  min_x : float ;
-  min_y : float ;
-  max_x : float ;
-  max_y : float
-}
-
-let to_bbox (x1, y1) (x2, y2) =
-  let (x1, x2) = if x1 < x2 then (x1, x2) else (x2, x1) in
-  let (y1, y2) = if y1 < y2 then (y1, y2) else (y2, y1) in
-  {
-    min_x = x1 ;
-    min_y = y1 ;
-    max_x = x2 ;
-    max_y = y2
-  }
-
-(* The center of a bbox. *)
-let center b =
-  let x = (b.min_x +. b.max_x) /. 2. in
-  let y = (b.min_y +. b.max_y) /. 2. in
-  (x, y)
-
-(* Scale a bbox, conserving its center. *)
-let scale b factor =
-  let (x, y) = center b in
-  let width = b.max_x -. b.min_x in
-  let height = b.max_y -. b.min_y in
-  let width = factor *. width in
-  let height = factor *. height in
-  {
-    min_x = x -. width /. 2. ;
-    min_y = y -. height /. 2. ;
-    max_x = x +. width /. 2. ;
-    max_y = y +. height /. 2.
-  }
-
-let default_bbox = to_bbox (0., 0.) (0., 0.)
-
-(* Given a bounding box and a point, whether the point is in the box. *)
-let is_in b (x, y) =
-  b.min_x <= x && x <= b.max_x
-  && b.min_y <= y && y <= b.may_y
-
-(* The list of angles of a bbox. *)
-let angles b = [
-  (b.min_x, b.min_y) ;
-  (b.max_x, b.min_y) ;
-  (b.max_x, b.max_y) ;
-  (b.min_x, b.max_y)
-]
-
-(* Given two bboxes, whether they overlap. *)
-let overlap b1 b2 =
-  List.exists (is_in b1) (angles b2)
-  || List.exists (is_in b2) (angles b1)
-
-(* Whether a bbox is fully included into another. *)
-let included b_inner b_outer =
-  b_inner.min_x >= b_inner.min_x
-  && b_inner.min_y >= b_inner.min_y
-  && b_inner.max_x <= b_inner.max_x
-  && b_inner.max_y <= b_inner.max_y
-
-(* The intersection of two overlapping bboxes. *)
-let inter b1 b2 = {
-  min_x = max b1.min_x b2.min_x ;
-  min_y = max b1.min_y b2.min_y ;
-  max_x = min b1.max_x b2.max_x ;
-  max_y = min b1.max_y b2.max_y ;
-}
-
-(* Get a bbox which contains both its argument bboxes. *)
-let outer b1 b2 = {
-  min_x = min b1.min_x b2.min_x ;
-  min_y = min b1.min_y b2.min_y ;
-  max_x = max b1.max_x b2.max_x ;
-  max_y = max b1.max_y b2.max_y ;
-}
-
-
 (* The actual type storing the spatial information of whether a particular zone is covered. *)
 type tree =
   | Full (* The provided zone is fully covered. *)
@@ -88,7 +7,9 @@ type tree =
   | Vertical of tree * float * tree (* Vertical division, with the middle y coordinate *)
 
 (* We associate this spatial information with the external bounding box to get a precise zone. *)
-type t = bbox * tree
+type t = Bbox.t * tree
+
+let default_bbox = Bbox.from_points (0., 0.) (0., 0.)
 
 let empty = (default_bbox, Empty)
 
@@ -225,6 +146,7 @@ let optimise ((bbox, t) : t) =
 
 (* Extend a zone to a larger bbox, without changing its meaning. *)
 let extend (b1, t) b2 =
+  let open Bbox in
   let b2 = outer b1 b2 in
   let t = Horizontal (Empty, b1.min_x, Horizontal (t, b1.max_x, Empty)) in
   let t = Vertical (Empty, b1.min_y, Vertical (t, b1.max_y, Empty)) in
