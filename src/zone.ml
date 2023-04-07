@@ -74,12 +74,12 @@ let rec union t = function
   | Empty -> t
   | Full -> Full
   | Horizontal (t1, x, t2) ->
-    let t1 = intersection (restrict_before_x x t) t1 in
-    let t2 = intersection (restrict_after_x x t) t2 in
+    let t1 = union (restrict_before_x x t) t1 in
+    let t2 = union (restrict_after_x x t) t2 in
     Horizontal (t1, x, t2)
   | Vertical (t1, y, t2) ->
-    let t1 = intersection (restrict_before_y y t) t1 in
-    let t2 = intersection (restrict_after_y y t) t2 in
+    let t1 = union (restrict_before_y y t) t1 in
+    let t2 = union (restrict_after_y y t) t2 in
     Vertical (t1, y, t2)
 
 (* Split a list in two at the given index. *)
@@ -115,13 +115,13 @@ let optimise ((bbox, t) : t) =
   (* Return a horizontal list of subtrees, each associated with the x coordinate they start with. *)
   let rec list_horizontal bbox = function
     | Horizontal (t1, x, t2) ->
-      if x <= bbox.min_x then list_horizontal bbox t2
-      else if x >= bbox.max_x then list_horizontal bbox t1
+      if x <= bbox.Bbox.min_x then list_horizontal bbox t2
+      else if x >= bbox.Bbox.max_x then list_horizontal bbox t1
       else
-        let l1 = list_horizontal {bbox with max_x = x} t1 in
-        let l2 = list_horizontal {bbox with min_x = x} t2 in
+        let l1 = list_horizontal {bbox with Bbox.max_x = x} t1 in
+        let l2 = list_horizontal {bbox with Bbox.min_x = x} t2 in
         remove_duplicates (l1 @ l2)
-    | t -> [(bbox.min_x, optimise_vertical bbox t)]
+    | t -> [(bbox.Bbox.min_x, optimise_vertical bbox t)]
   (* Group all the horizontal elements into a balanced tree. *)
   and optimise_horizontal bbox t =
     let l = list_horizontal bbox t in
@@ -130,13 +130,13 @@ let optimise ((bbox, t) : t) =
   (* Same than list_horizontal, but vertically. *)
   and list_vertical bbox = function
     | Vertical (t1, y, t2) ->
-      if x <= bbox.min_y then list_vertical bbox t2
-      else if x >= bbox.max_y then list_vertical bbox t1
+      if x <= bbox.Bbox.min_y then list_vertical bbox t2
+      else if x >= bbox.Bbox.max_y then list_vertical bbox t1
       else
-        let l1 = list_vertical {bbox with max_y = y} t1 in
-        let l2 = list_vertical {bbox with min_y = y} t2 in
+        let l1 = list_vertical {bbox with Bbox.max_y = y} t1 in
+        let l2 = list_vertical {bbox with Bbox.min_y = y} t2 in
         remove_duplicates (l1 @ l2)
-    | t -> [(bbox.min_y, optimise_horizontal bbox t)]
+    | t -> [(bbox.Bbox.min_y, optimise_horizontal bbox t)]
   (* Same than optimise_horizontal, but vertically. *)
   and optimise_vertical bbox t =
     let l = list_vertical bbox t in
@@ -168,18 +168,18 @@ let to_bboxes (bbox, t) =
     | Empty -> acc
     | Full -> bbox :: acc
     | Horizontal (t1, x, t2) ->
-      let acc = aux acc {bbox with max_x = min bbox.max_x x} t1 in
-      let acc = aux acc {bbox with min_x = max bbox.min_x x} t2 in
+      let acc = aux acc {bbox with Bbox.max_x = min bbox.Bbox.max_x x} t1 in
+      let acc = aux acc {bbox with Bbox.min_x = max bbox.Bbox.min_x x} t2 in
       acc
     | Vertical (t1, y, t2) ->
-      let acc = aux acc {bbox with max_y = min bbox.max_y y} t1 in
-      let acc = aux acc {bbox with min_y = max bbox.min_y y} t2 in
+      let acc = aux acc {bbox with Bbox.max_y = min bbox.Bbox.max_y y} t1 in
+      let acc = aux acc {bbox with Bbox.min_y = max bbox.Bbox.min_y y} t2 in
       acc in
   acc [] bbox t
 
 let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
     ?(safe_factor=1.) zone box =
-  let bonus_box = scale box safe_factor in
+  let bonus_box = Bbox.scale box safe_factor in
   let zone = extend zone bonus_box in
   let (external_box, t) = zone in
   (* All the rectangles that would be missing for a given bbox. *)
@@ -188,10 +188,20 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
     let t = intersection (negation t) missing_t in
     to_bboxes t in
   let must_rectangles = missing box in
-  let my_rectangles = missing bonus_box in
-  let rectangles = [] (* TODO *) in
+  let may_rectangles = missing bonus_box in
+  let rectangles =
+    List.fold_left (fun acc rectangle ->
+      match List.find_opt (Bbox.included rectangle) may_rectangles with
+      | Some rect -> rect :: acc
+      | None -> assert false
+    ) [] must_rectangles in
+  let rectangles = List.sort_uniq compare rectangles in
+  (* We now have a list of rectangles that fit all the target area.
+    We are just left to make sure that all their dimensions are correct. *)
+  let rectangles =
+    List.concat_map (fun rectangle ->
+      Bbox.split rectangle maxwidth maxheight) rectangles in
+  (* TODO: Merge too small rectangles. *)
   let zone = List.fold_left add_bbox zone rectangles in
-  (zone, [])
-
-(* TODO *)
+  (zone, rectangles)
 

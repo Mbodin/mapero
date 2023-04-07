@@ -13,6 +13,9 @@ val from_points : Geometry.real_coordinates -> Geometry.real_coordinates -> t
 (* The center of a bbox. *)
 val center : t -> Geometry.real_coordinates
 
+(* The dimension of a bbox. *)
+val dimensions : t -> (float * float)
+
 (* Scale a bbox, conserving its center. *)
 val scale : t -> float -> t
 
@@ -30,4 +33,7 @@ val intersection : t -> t -> t
 
 (* Get the minimal bbox which contains both its argument bboxes. *)
 val outer : t -> t -> t
+
+(* Split a bbox into several bboxes whose dimensions are less than the provided width and height. *)
+val split : t -> float -> float -> t list
 

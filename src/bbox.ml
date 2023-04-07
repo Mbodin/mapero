@@ -21,10 +21,11 @@ let center b =
   let y = (b.min_y +. b.max_y) /. 2. in
   (x, y)
 
+let dimensions b = (b.max_x -. b.min_x, b.max_y -. b.min_y)
+
 let scale b factor =
   let (x, y) = center b in
-  let width = b.max_x -. b.min_x in
-  let height = b.max_y -. b.min_y in
+  let (width, height) = dimensions b in
   let width = factor *. width in
   let height = factor *. height in
   {
@@ -81,4 +82,19 @@ let outer b1 b2 = {
   max_x = max b1.max_x b2.max_x ;
   max_y = max b1.max_y b2.max_y ;
 }
+
+let split b maxwidth maxheight =
+  let rec split_horizontal b =
+    let (width, _) = dimensions b in
+    if width <= maxwidth then [b]
+    else
+      ({b with max_x = b.min_x +. maxwidth}
+      :: split_horizontal {b with min_x = b.min_x +. maxwidth}) in
+  let rec split_vertical b =
+    let (_, height) = dimensions b in
+    if height <= maxheight then [b]
+    else
+      ({b with max_y = b.min_y +. maxheight}
+      :: split_horizontal {b with min_y = b.min_y +. maxheight}) in
+  List.concat_map split_horizontal (split_vertical b)
 
