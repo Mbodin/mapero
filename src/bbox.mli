@@ -13,7 +13,7 @@ val from_points : Geometry.real_coordinates -> Geometry.real_coordinates -> t
 (* The center of a bbox. *)
 val center : t -> Geometry.real_coordinates
 
-(* The dimension of a bbox. *)
+(* The dimension of a bbox (width, height). *)
 val dimensions : t -> (float * float)
 
 (* Scale a bbox, conserving its center. *)

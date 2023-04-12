@@ -201,7 +201,91 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
   let rectangles =
     List.concat_map (fun rectangle ->
       Bbox.split rectangle maxwidth maxheight) rectangles in
-  (* TODO: Merge too small rectangles. *)
+  (* At this point, rectangles are at most maxwidth by maxheight in dimension. *)
+  (* Splitting all rectangles on whether their dimensions are fine or not. *)
+  let (fine, too_small) =
+    List.partition (fun rectangle ->
+      let (width, height) = Bbox.dimensions rectangle in
+      width >= minwidth && height >= minheight) rectangles in
+  (* What follows is more efficient with in-place replacments. *)
+  let fine = Array.of_list fine in
+  let distance rect1 rect2 =
+    (* Compute (the square of) the distance between two rectangles rect1 and rect2. *)
+    let (cx1, cy1) = Bbox.center rect1 in
+    let (cx2, cy2) = Bbox.center rect2 in
+    let square x = x *. x in
+    square (cx1 -. cx2) +. square (cy1 -. cy2) in
+  let can_be_merged rect1 rect2 =
+    let rect' = Bbox.outer rect1 rect2 in
+    let (x, y) = Bbox.dimensions rect' in
+    x <= maxwidth && y <= maxheight in
+  let (_, still_too_small) =
+    (* Merging too small rectangles if possible. *)
+    List.partition (fun rect ->
+      (* Fetching the closest fine rectangle that can be merged with. *)
+      let best = ref (-1) in
+      Array.iteri (fun i rect' ->
+        if can_be_merged rect rect' then (
+          if !best = -1 then
+            best := i
+          else (
+            let rect_best = fine.(!best) in
+            if distance rect rect' < distance rect rect_best then
+              best := i
+          )
+        )) fine ;
+      if !best = -1 then false
+      else (
+        (* Merging the two rectangles. *)
+        let rect' = fine.(!best) in
+        assert (can_be_merged rect rect') ;
+        let rect' = Bbox.outer rect rect' in
+        fine.(!best) <- rect' ;
+        true
+      )) too_small in
+  let merging_too_small =
+    (* The rectangles that are yet in still_too_small can't be merged with any rectangle
+      from the fine group, but they might be merged together. *)
+    let rec aux = function
+      | [] -> []
+      | rect :: l ->
+        (* We just fetch any other rectangle in l that we could merge with. *)
+        let rec fetch acc = function
+          | [] -> (None, [])
+          | rect' :: l ->
+            if can_be_merged rect rect' then (Some rect', acc @ l)
+            else fetch (rect' :: acc) l in
+        let (o, l) = fetch [] l in
+        match o with
+        | None ->
+          (* This rectangle has to be left unmerged. *)
+          rect :: aux l
+        | Some rect' ->
+          let rect' = Bbox.outer rect rect' in
+          let (width, height) = Bbox.dimensions rect' in
+          if width >= minwidth && height >= minheight then
+            (* We just merge our rectangle into something fine! *)
+            rect' :: aux l
+          else
+            (* We keep looking for potential merges. *)
+            aux (rect' :: l) in
+    aux still_too_small in
+  let merging_too_small =
+    (* At this point, there might be rectangles within merging_too_small that overlap and that
+      would be useless. *)
+    let merging_too_small =
+      List.sort (fun rect1 rect2 ->
+        compare (Bbox.dimensions rect1) (Bbox.dimensions rect2)) merging_too_small in
+    let rec aux = function
+      | [] -> []
+      | rect :: l ->
+        if List.exists (Bbox.included rect) l then
+          (* This rectangle is actually useless. *)
+          aux l
+        else rect :: aux l in
+    aux merging_too_small in
+  let rectangles =
+    Array.to_list fine @ merging_too_small in
   let zone = List.fold_left add_bbox zone rectangles in
   (zone, rectangles)
 
