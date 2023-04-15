@@ -50,7 +50,7 @@ let restrict_after_y y0 =
 
 
 (* Negation of a tree. *)
-let negation = function
+let rec negation = function
   | Full -> Empty
   | Empty -> Full
   | Horizontal (t1, x, t2) -> Horizontal (negation t1, x, negation t2)
@@ -93,7 +93,7 @@ let split_list =
   aux []
 
 (* A (costly) function to simplify bounded trees. *)
-let optimise ((bbox, t) : t) =
+let optimise (bbox, t) =
   (* Create a balanced tree from a list. *)
   let make_tree constr l =
     let rec aux s l =
@@ -110,6 +110,7 @@ let optimise ((bbox, t) : t) =
     snd (aux (List.length l) l) in
   (* Remove the dupplicates in a list of pointed trees. *)
   let rec remove_duplicates = function
+    | [] -> []
     | (x, t1) :: (_, t2) :: l when t1 = t2 -> remove_duplicates ((x, t1) :: l)
     | (x, t) :: l -> (x, t) :: remove_duplicates l in
   (* Return a horizontal list of subtrees, each associated with the x coordinate they start with. *)
@@ -130,8 +131,8 @@ let optimise ((bbox, t) : t) =
   (* Same than list_horizontal, but vertically. *)
   and list_vertical bbox = function
     | Vertical (t1, y, t2) ->
-      if x <= bbox.Bbox.min_y then list_vertical bbox t2
-      else if x >= bbox.Bbox.max_y then list_vertical bbox t1
+      if y <= bbox.Bbox.min_y then list_vertical bbox t2
+      else if y >= bbox.Bbox.max_y then list_vertical bbox t1
       else
         let l1 = list_vertical {bbox with Bbox.max_y = y} t1 in
         let l2 = list_vertical {bbox with Bbox.min_y = y} t2 in
@@ -175,29 +176,27 @@ let to_bboxes (bbox, t) =
       let acc = aux acc {bbox with Bbox.max_y = min bbox.Bbox.max_y y} t1 in
       let acc = aux acc {bbox with Bbox.min_y = max bbox.Bbox.min_y y} t2 in
       acc in
-  acc [] bbox t
+  aux [] bbox t
 
-let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
-    ?(safe_factor=1.) zone box =
-  let bonus_box = Bbox.scale box safe_factor in
-  let zone = extend zone bonus_box in
-  let (external_box, t) = zone in
-  (* All the rectangles that would be missing for a given bbox. *)
-  let missing box =
-    let (_, missing_t) = extend (zone_of_bbox box) external_box in
-    let t = intersection (negation t) missing_t in
-    to_bboxes t in
-  let must_rectangles = missing box in
-  let may_rectangles = missing bonus_box in
-  let rectangles =
-    List.fold_left (fun acc rectangle ->
-      match List.find_opt (Bbox.included rectangle) may_rectangles with
-      | Some rect -> rect :: acc
-      | None -> assert false
-    ) [] must_rectangles in
-  let rectangles = List.sort_uniq compare rectangles in
-  (* We now have a list of rectangles that fit all the target area.
-    We are just left to make sure that all their dimensions are correct. *)
+(* Compute the square of the distance between two rectangles rect1 and rect2.
+  It's faster to compute and equivalent to the distance for sorting. *)
+let distance rect1 rect2 =
+  let (cx1, cy1) = Bbox.center rect1 in
+  let (cx2, cy2) = Bbox.center rect2 in
+  let square x = x *. x in
+  square (cx1 -. cx2) +. square (cy1 -. cy2)
+
+(* Insert an element in a sorted list. *)
+let rec insert compare e = function
+  | [] -> [e]
+  | e1 :: l ->
+    if compare e1 e < 0 then e1 :: insert compare e l
+    else e :: e1 :: l
+
+(* Given a list of rectangles, try to return a slightly different list
+  covering the same area, and following the min and max dimensions. *)
+let fit_to_dimensions maxwidth maxheight minwidth minheight rectangles =
+  (* First, splitting the larger ones. *)
   let rectangles =
     List.concat_map (fun rectangle ->
       Bbox.split rectangle maxwidth maxheight) rectangles in
@@ -209,12 +208,6 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
       width >= minwidth && height >= minheight) rectangles in
   (* What follows is more efficient with in-place replacments. *)
   let fine = Array.of_list fine in
-  let distance rect1 rect2 =
-    (* Compute (the square of) the distance between two rectangles rect1 and rect2. *)
-    let (cx1, cy1) = Bbox.center rect1 in
-    let (cx2, cy2) = Bbox.center rect2 in
-    let square x = x *. x in
-    square (cx1 -. cx2) +. square (cy1 -. cy2) in
   let can_be_merged rect1 rect2 =
     let rect' = Bbox.outer rect1 rect2 in
     let (x, y) = Bbox.dimensions rect' in
@@ -273,19 +266,57 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
   let merging_too_small =
     (* At this point, there might be rectangles within merging_too_small that overlap and that
       would be useless. *)
+    let order rect1 rect2 = compare (Bbox.dimensions rect1) (Bbox.dimensions rect2) in
     let merging_too_small =
-      List.sort (fun rect1 rect2 ->
-        compare (Bbox.dimensions rect1) (Bbox.dimensions rect2)) merging_too_small in
+      List.sort order merging_too_small in
     let rec aux = function
       | [] -> []
       | rect :: l ->
         if List.exists (Bbox.included rect) l then
           (* This rectangle is actually useless. *)
           aux l
-        else rect :: aux l in
+        else
+          match List.find_opt (Bbox.overlap rect) l with
+          | None -> rect :: aux l
+          | Some rect' ->
+            if can_be_merged rect rect' then
+              (* We found an overlapping bbox that can be merged. *)
+              let rect' = Bbox.outer rect rect' in
+              aux (insert order rect' l)
+            else
+              (* Not much to be done there. *)
+              rect :: aux l in
     aux merging_too_small in
+  Array.to_list fine @ merging_too_small
+
+let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
+    ?(safe_factor=1.) zone box =
+  let bonus_box = Bbox.scale box safe_factor in
+  let zone = extend zone bonus_box in
+  let (external_box, t) = zone in
+  (* All the rectangles that would be missing for a given bbox. *)
+  let missing box =
+    let (_, missing_t) = extend (zone_of_bbox box) external_box in
+    let t = intersection (negation t) missing_t in
+    to_bboxes (box, t) in
+  let must_rectangles = missing box in
+  let may_rectangles = missing bonus_box in
   let rectangles =
-    Array.to_list fine @ merging_too_small in
+    List.fold_left (fun acc rectangle ->
+      match List.find_opt (Bbox.included rectangle) may_rectangles with
+      | Some rect -> rect :: acc
+      | None -> assert false
+    ) [] must_rectangles in
+  let rectangles = List.sort_uniq compare rectangles in
+  (* We now have a list of rectangles that fit all the target area.
+    We are just left to make sure that all their dimensions are correct. *)
+  let rectangles =
+    fit_to_dimensions maxwidth maxheight minwidth minheight rectangles in
+  (* Placing rectangles closer to the center first. *)
+  let rectangles =
+    List.sort (fun rect1 rect2 ->
+      compare (distance box rect1) (distance box rect2)) rectangles in
+  (* Applying the chosen rectangles to the final box. *)
   let zone = List.fold_left add_bbox zone rectangles in
-  (zone, rectangles)
+  ((external_box, optimise zone), rectangles)
 

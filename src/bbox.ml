@@ -37,7 +37,7 @@ let scale b factor =
 
 let is_in b (x, y) =
   b.min_x <= x && x <= b.max_x
-  && b.min_y <= y && y <= b.may_y
+  && b.min_y <= y && y <= b.max_y
 
 (* The list of angles of a bbox. *)
 let angles b = [
