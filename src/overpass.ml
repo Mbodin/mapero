@@ -37,3 +37,7 @@ let cache =
     zone = Zone.empty
   }
 
+(* TODO: For each rectangle in the zone, store the ListDiff.id of the list of
+  key/values that have been queried: this is easy to update when changing the
+  list of OSM objects we are interested at. *)
+
