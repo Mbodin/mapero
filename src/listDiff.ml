@@ -23,7 +23,7 @@ let free_id = ref 1
 
 (* Add a set into the maps sets and ids.
   This is the only function actually changing these here. *)
-let add_set s =
+let add_set_raw s =
   if S.is_empty s then 0
   else (
     let id = !free_id in
@@ -33,17 +33,19 @@ let add_set s =
     id
   )
 
-(* Given a list, retrieve its id or create a new one. *)
-let add l =
-  if l = [] then 0
+(* Like add_set_raw, but first check whether this set already exist. *)
+let add_set s =
+  if S.is_empty s then 0
   else
-    let s = S.of_list l in
     match SMap.find_opt s !ids with
     | Some id -> id
-    | None -> add_set s
+    | None -> add_set_raw s
 
-(* Return the set associated to an id. *)
-let get id =
+(* Given a list, retrieve its id or create a new one. *)
+let add l =
+  add_set (S.of_list l)
+
+let to_set id =
   if id = 0 then S.empty
   else
     match IMap.find_opt id1 !sets with
@@ -54,6 +56,8 @@ let get id =
 
 (* Directly convert a set into a list. *)
 let set_to_list s = List.of_seq (S.to_seq s)
+
+let to_list id = set_to_list (to_set id)
 
 (* The goal of this module is to memoise the result of the functions manipulating
   only identifiers.
@@ -69,7 +73,7 @@ let memoise2 normalise special_cases f2 =
       match IMap2.find_opt (id1, id2) !store with
       | Some r -> r
       | None ->
-        let r = f2 (get id1) (get id2) in
+        let r = f2 (to_set id1) (to_set id2) in
         store := IMap2.add (id1, id2) r !store ;
         r
 
@@ -100,16 +104,10 @@ let inter id1 id2 =
 let diff =
   memoise2 (fun id12 -> id12 (* Not commutative, so no normalisation *))
     (special_cases
-      (fun id2 -> (* [] - id2 *)
-        ([], set_to_list (get id2)))
-      (fun id1 -> (* id1 - [] *)
-        (set_to_list (get id1), []))
-      (fun _ -> (* id - id *) ([], [])))
-    (fun s1 s2 ->
-      let removed = S.diff s1 s2 in
-      let added = S.diff s2 s1 in
-      let to_list s = set_to_list s in
-      (to_list removed, to_list added))
+      (fun _ -> 0 (* [] - id2 = [] *))
+      (fun id1 -> id1 (* id1 - [] = id1 *))
+      (fun _ -> (* id - id = [] *) 0))
+    (fun s1 s2 -> add_set (S.diff s1 s2))
 
 end
 

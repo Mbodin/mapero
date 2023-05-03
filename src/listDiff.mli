@@ -9,17 +9,21 @@ type id
 (* Add a list to the store (if not already in it), and return its id. *)
 val add : O.t list -> id
 
-(* Given two id of lists, return two lists:
-  - the list of elements that have been removed.
-  - the list of elements that have been added.
+(* Get the elements of a stored list.
   The order is unspecified. *)
-val diff : id -> id -> O.t list * 'a list
+val to_list : id -> O.t list
+
+(* Get the elements of a stored list as a set. *)
+val to_set : id -> Set.S with type elt = O.t
 
 (* Return the union of two lists. *)
 val union : id -> id -> id
 
 (* Return the intersection of two lists. *)
 val inter : id -> id -> id
+
+(* The difference between two lists. *)
+val diff : id -> id -> id
 
 end
 

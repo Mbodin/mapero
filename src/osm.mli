@@ -11,7 +11,7 @@ type estr =
   | Exact of string
   | Regexp of string
 
-(* A conjonction of attribute and values that is meant to be searched. *)
+(* A conjunction of attribute and values that is meant to be searched. *)
 type attributes = (estr (* key *) * estr (* value *)) list
 
 (* A bounding box. *)
