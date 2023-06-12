@@ -5,7 +5,7 @@ module IMap = Map.Make (Structures.IntOrder)
 
 module AttrOrder : Set.OrderedType with type t = Osm.attributes = struct
     type t = Osm.attributes
-    val compare : t -> t -> int = compare
+    let compare : t -> t -> int = compare
   end
 
 (* A store for attribute lists. *)

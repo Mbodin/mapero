@@ -1,86 +1,91 @@
 
-(* The actual type storing the spatial information of whether a particular zone is covered. *)
-type tree =
-  | Full (* The provided zone is fully covered. *)
-  | Empty (* The provided zone is not covered at all. *)
-  | Horizontal of tree * float * tree (* Horizontal division, with the middle x coordinate *)
-  | Vertical of tree * float * tree (* Vertical division, with the middle y coordinate *)
+(* A type to store spacially localised information.
+  Information can be stored at the level of nodes (typically for non punctual data) and leaves. *)
+type ('node, 'leaf) tree =
+  | Leaf of 'leaf
+  | Horizontal of 'node * tree * float * tree (* Horizontal division, with the middle x coordinate *)
+  | Vertical of 'node * tree * float * tree (* Vertical division, with the middle y coordinate *)
 
 (* We associate this spatial information with the external bounding box to get a precise zone. *)
-type t = Bbox.t * tree
+type ('node, 'leaf) bbtree = Bbox.t * ('node, 'leaf) tree
 
+type zone = (unit, bool) bbtree
+
+
+(* A default bounded box, for initialisation. *)
 let default_bbox = Bbox.from_points (0., 0.) (0., 0.)
 
-let empty = (default_bbox, Empty)
+let empty : zone = (default_bbox, Leaf false)
+
+(* Get a zone from a bbox. *)
+let zone_of_bbox b : zone = (b, Leaf true)
 
 
 (* Restriction functions of a tree along a semi-line. *)
 
 let rec restrict_gen fx fy = function
-  | Full -> Full
-  | Empty -> Empty
-  | Horizontal (t1, x, t2) ->
+  | Leaf data -> Leaf data
+  | Horizontal (data, t1, x, t2) ->
     let t1 = restrict_gen fx fy t1 in
     let t2 = restrict_gen fx fy t2 in
-    fx t1 x t2
-  | Vertical (t1, y, t2) ->
+    fx data t1 x t2
+  | Vertical (data, t1, y, t2) ->
     let t1 = restrict_gen fx fy t1 in
     let t2 = restrict_gen fx fy t2 in
-    fy t1 y t2
+    fy data t1 y t2
 
 let restrict_before_x x0 =
   restrict_gen
-    (fun t1 x t2 -> if x >= x0 then t1 else Horizontal (t1, x, t2))
-    (fun t1 y t2 -> Vertical (t1, y, t2))
+    (fun data t1 x t2 -> if x >= x0 then t1 else Horizontal (data, t1, x, t2))
+    (fun data t1 y t2 -> Vertical (data, t1, y, t2))
 
 let restrict_after_x x0 =
   restrict_gen
-    (fun t1 x t2 -> if x <= x0 then t2 else Horizontal (t1, x, t2))
-    (fun t1 y t2 -> Vertical (t1, y, t2))
+    (fun data t1 x t2 -> if x <= x0 then t2 else Horizontal (data, t1, x, t2))
+    (fun data t1 y t2 -> Vertical (data, t1, y, t2))
 
 let restrict_before_y y0 =
   restrict_gen
-    (fun t1 x t2 -> Horizontal (t1, x, t2))
-    (fun t1 y t2 -> if y >= y0 then t1 else Horizontal (t1, y, t2))
+    (fun data t1 x t2 -> Horizontal (data, t1, x, t2))
+    (fun data t1 y t2 -> if y >= y0 then t1 else Horizontal (data, t1, y, t2))
 
 let restrict_after_y y0 =
   restrict_gen
-    (fun t1 x t2 -> Horizontal (t1, x, t2))
-    (fun t1 y t2 -> if y <= y0 then t2 else Horizontal (t1, y, t2))
+    (fun data t1 x t2 -> Horizontal (data, t1, x, t2))
+    (fun data t1 y t2 -> if y <= y0 then t2 else Horizontal (data, t1, y, t2))
 
 
-(* Negation of a tree. *)
+(* Negation of a zone (boolean) tree. *)
 let rec negation = function
-  | Full -> Empty
-  | Empty -> Full
-  | Horizontal (t1, x, t2) -> Horizontal (negation t1, x, negation t2)
-  | Vertical (t1, y, t2) -> Vertical (negation t1, y, negation t2)
+  | Leaf covered -> Leaf (not covered)
+  | Horizontal ((), t1, x, t2) -> Horizontal ((), negation t1, x, negation t2)
+  | Vertical ((), t1, y, t2) -> Vertical ((), negation t1, y, negation t2)
 
-(* Intersection of two trees. *)
+(* Intersection of two zone trees. *)
 let rec intersection t = function
-  | Empty -> Empty
-  | Full -> t
-  | Horizontal (t1, x, t2) ->
+  | Leaf false -> Leaf false
+  | Leaf true -> t
+  | Horizontal ((), t1, x, t2) ->
     let t1 = intersection (restrict_before_x x t) t1 in
     let t2 = intersection (restrict_after_x x t) t2 in
-    Horizontal (t1, x, t2)
-  | Vertical (t1, y, t2) ->
+    Horizontal ((), t1, x, t2)
+  | Vertical ((), t1, y, t2) ->
     let t1 = intersection (restrict_before_y y t) t1 in
     let t2 = intersection (restrict_after_y y t) t2 in
-    Vertical (t1, y, t2)
+    Vertical ((), t1, y, t2)
 
-(* Union of two trees. *)
+(* Union of two zone trees. *)
 let rec union t = function
-  | Empty -> t
-  | Full -> Full
-  | Horizontal (t1, x, t2) ->
+  | Leaf false -> t
+  | Leaf true -> Leaf true
+  | Horizontal ((), t1, x, t2) ->
     let t1 = union (restrict_before_x x t) t1 in
     let t2 = union (restrict_after_x x t) t2 in
-    Horizontal (t1, x, t2)
-  | Vertical (t1, y, t2) ->
+    Horizontal ((), t1, x, t2)
+  | Vertical ((), t1, y, t2) ->
     let t1 = union (restrict_before_y y t) t1 in
     let t2 = union (restrict_after_y y t) t2 in
-    Vertical (t1, y, t2)
+    Vertical ((), t1, y, t2)
 
 (* Split a list in two at the given index. *)
 let split_list =
@@ -92,12 +97,19 @@ let split_list =
       assert false in
   aux []
 
-(* A (costly) function to simplify bounded trees. *)
-let optimise (bbox, t) =
-  (* Create a balanced tree from a list. *)
+(* A (costly) function to simplify bounded trees.
+  Information at nodes may be applied to a larger area, loosing some information.
+  In order to deal with the node reorganisation, a function to merge nodes and a neutral element
+  are required (e.g., a monoid), as well a neutral element for leaves.
+  Neutral elements are assumed to carry no information. *)
+let simplify merge_node neutral_node neutral_leaf (bbox, t) =
+  (* Create a balanced tree from a list.
+    Each element of the list is a pair of its start coordinate and its associated tree.
+    The list is assumed non-empty. *)
   let make_tree constr l =
     let rec aux s l =
       (* Invariant: List.length l = s > 0. *)
+      assert (s > 0) ;
       if s = 1 then
         (match l with
          | [(x, t)] -> (x, t)
@@ -108,53 +120,128 @@ let optimise (bbox, t) =
         constr (aux s' l1) (aux (s - s') l2)
       in
     snd (aux (List.length l) l) in
-  (* Remove the dupplicates in a list of pointed trees. *)
-  let rec remove_duplicates = function
-    | [] -> []
-    | (x, t1) :: (_, t2) :: l when t1 = t2 -> remove_duplicates ((x, t1) :: l)
-    | (x, t) :: l -> (x, t) :: remove_duplicates l in
-  (* Return a horizontal list of subtrees, each associated with the x coordinate they start with. *)
-  let rec list_horizontal bbox = function
-    | Horizontal (t1, x, t2) ->
-      if x <= bbox.Bbox.min_x then list_horizontal bbox t2
-      else if x >= bbox.Bbox.max_x then list_horizontal bbox t1
+  (* CHeck whether two trees are identical, ignoring the local node data. *)
+  let compare_trees t1 t2 =
+    match t1, t2 with
+    | Leaf _, Leaf _ -> t1 = t2
+    | Horizontal (_, t1a, x1, t1b), Horizontal (_, t2a, x2, t2b) -> t1a = t2a && x1 = x2 && t1b = t2b
+    | Vertical (_, t1a, y1, t1b), Vertical (_, t2a, y2, t2b) -> t1a = t2a && x1 = x2 && t1b = t2b
+    | _, _ -> false in
+  (* Assuming [compare_trees t1 t2], merge both trees with its local node data. *)
+  let merge_trees t1 t2 =
+    assert (compare_trees t1 t2) ;
+    match t1, t2 with
+    | Leaf _, Leaf _ -> t1
+    | Horizontal (data1, t1a, x1, t1b), Horizontal (data2, _, _, _) ->
+      Horizontal (merge_node data1 data2, t1a, x1, t1b)
+    | Vertical (data1, t1a, y1, t1b), Vertical (data2, _, _, _) ->
+      Vertical (merge_node data1 data2, t1a, y1, t1b)
+    | _, _ -> assert false in
+  (* Incorporate the provided data to a tree.
+    The optional argument indicates a prefered mode (true for horizontal and false for vertical). *)
+  let add_data ?(mode=true) data = function
+    | Leaf d ->
+      if data = neutral_node then
+        (* If the provided data is neutral, we assume it's fine not to store it. *)
+        Leaf d
       else
-        let l1 = list_horizontal {bbox with Bbox.max_x = x} t1 in
-        let l2 = list_horizontal {bbox with Bbox.min_x = x} t2 in
-        remove_duplicates (l1 @ l2)
-    | t -> [(bbox.Bbox.min_x, optimise_vertical bbox t)]
+        (* The data is important: we add a dummy division. *)
+        let (d, t1, x, t2) = (data, Leaf neutral_leaf, neg_infinity, Lead d) in
+        if mode then Horizontal (d, t1, x, t2) else Vertical (d, t1, x, t2)
+    | Horizontal (data', t1, x, t2) -> Horizontal (merge_node data data', t1, x, t2)
+    | Vertical (data', t1, y, t2) -> Vertical (merge_node data data', t1, y, t2) in
+  (* Merge the duplicates in a list of pointed trees. *)
+  let rec merge_duplicates = function
+    | [] -> []
+    | (x, t1) :: (_, t2) :: l when compare_trees t1 t2 ->
+      merge_duplicates ((x, merge_trees t1 t2) :: l)
+    | (x, t) :: l -> (x, t) :: merge_duplicates l in
+  (* Return a horizontal list of subtrees, each associated with the x coordinate they start with.
+    Also return the merge of all node data removed during the construction of the list. *)
+  let rec list_horizontal bbox = function
+    | Horizontal (data, t1, x, t2) ->
+      (* We build a first tree, ignoring the inner data. *)
+      let (l, data') =
+      (* First, we check whether this horizontal division is meaningful. *)
+        if x <= bbox.Bbox.min_x then list_horizontal bbox t2
+        else if x >= bbox.Bbox.max_x then list_horizontal bbox t1
+        else
+          let (l1, data1) = list_horizontal {bbox with Bbox.max_x = x} t1 in
+          let (l2, data2) = list_horizontal {bbox with Bbox.min_x = x} t2 in
+          (merge_duplicates (l1 @ l2), merge_node data1 data2) in
+      (l, merge_node data data')
+    | t -> ([(bbox.Bbox.min_x, optimise_vertical bbox t)], neutral_node)
   (* Group all the horizontal elements into a balanced tree. *)
   and optimise_horizontal bbox t =
-    let l = list_horizontal bbox t in
-    make_tree (fun (x1, t1) (x2, t2) ->
-      (x1, Horizontal (t1, x2, t2))) l
+    let (l, data) = list_horizontal bbox t in
+    let t =
+      make_tree (fun (x1, t1) (x2, t2) ->
+        (x1, Horizontal (neutral_node, t1, x2, t2))) l in
+    (* We reverse the mode to help the information being caught at the next level if needed. *)
+    add_data ~mode:false data t
   (* Same than list_horizontal, but vertically. *)
   and list_vertical bbox = function
-    | Vertical (t1, y, t2) ->
-      if y <= bbox.Bbox.min_y then list_vertical bbox t2
-      else if y >= bbox.Bbox.max_y then list_vertical bbox t1
-      else
-        let l1 = list_vertical {bbox with Bbox.max_y = y} t1 in
-        let l2 = list_vertical {bbox with Bbox.min_y = y} t2 in
-        remove_duplicates (l1 @ l2)
-    | t -> [(bbox.Bbox.min_y, optimise_horizontal bbox t)]
+    | Vertical (data, t1, y, t2) ->
+      let (l, data') =
+        if y <= bbox.Bbox.min_y then list_vertical bbox t2
+        else if y >= bbox.Bbox.max_y then list_vertical bbox t1
+        else
+          let (l1, data1) = list_vertical {bbox with Bbox.max_y = y} t1 in
+          let (l2, data2) = list_vertical {bbox with Bbox.min_y = y} t2 in
+          (merge_duplicates (l1 @ l2), merge_node data1 data2) in
+      (l, merge_node data data')
+    | t -> ([(bbox.Bbox.min_y, optimise_horizontal bbox t)], neutral_node)
   (* Same than optimise_horizontal, but vertically. *)
   and optimise_vertical bbox t =
-    let l = list_vertical bbox t in
-    make_tree (fun (y1, t1) (y2, t2) ->
-      (y1, Vertical (t1, y2, t2))) l in
+    let (l, data) = list_vertical bbox t in
+    let t =
+      make_tree (fun (y1, t1) (y2, t2) ->
+        (y1, Vertical (neutral_node, t1, y2, t2))) l in
+    add_data ~mode:true data t in
   optimise_horizontal bbox t
 
-(* Extend a zone to a larger bbox, without changing its meaning. *)
-let extend (b1, t) b2 =
+(* The simplify function can make node information less precise.
+  This function aims at counter-balacing this effect.
+  It can be applied when the node information is a list of objects that can be identified spacially.
+  It takes a function stating whether an object is within a bbox or not. *)
+let rec specialise is_in_bbox (bbox, t) =
+  let is_leaf = function
+    | Leaf _ -> true
+    | _ -> false in
+  (* Assuming that t is not a leaf, incorporate the provided data to t's data. *)
+  let incorporate data = function
+    | Leaf _ -> assert false
+    | Horizontal (data', t1, x, t2) -> Horizontal (data @ data', t1, x, t2)
+    | Vertical (data', t1, y, t2) -> Vertical (data @ data', t1, y, t2) in
+  (* Extract from data the objects within the provided bbox and incorporate it into t. *)
+  let aux data t bbox =
+    let t = specialise is_in_bbox (bbox, t) in
+    if is_leaf t then (data, t)
+    else
+      let (data_inner, data) = List.partition (is_in_bbox bbox) data in
+      (data, incorporate data_inner t) in
+  match t with
+  | Leaf _ -> (bbox, t)
+  | Horizontal (data, t1, x, t2) ->
+    let (data, t1) = aux t1 {bbox with Bbox.max_x = x} in
+    let (data, t2) = aux t2 {bbox with Bbox.min_x = x} in
+    Horizontal (data, t1, x, t2)
+  | Vertical (data, t1, y, t2) ->
+    let (data, t1) = aux t1 {bbox with Bbox.max_y = y} in
+    let (data, t2) = aux t2 {bbox with Bbox.min_y = y} in
+    Vertical (data, t1, y, t2)
+
+(* Extend a zone to a larger bbox, without changing its meaning.
+  It takes a neutral element for leaves. *)
+let extend neutral_leaf (b1, t) b2 =
   let open Bbox in
   let b2 = outer b1 b2 in
-  let t = Horizontal (Empty, b1.min_x, Horizontal (t, b1.max_x, Empty)) in
-  let t = Vertical (Empty, b1.min_y, Vertical (t, b1.max_y, Empty)) in
+  let empty = Leaf neutral_leaf in
+  let t = Horizontal (empty, b1.min_x, Horizontal (t, b1.max_x, empty)) in
+  let t = Vertical (empty, b1.min_y, Vertical (t, b1.max_y, empty)) in
   (b2, t)
 
-(* Get a zone from a bbox. *)
-let zone_of_bbox b = (b, Full)
+(* TODO: Stopped here. *)
 
 (* Add a bbox to a zone. *)
 let add_bbox z b2 =
@@ -318,5 +405,5 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
       compare (distance box rect1) (distance box rect2)) rectangles in
   (* Applying the chosen rectangles to the final box. *)
   let zone = List.fold_left add_bbox zone rectangles in
-  ((external_box, optimise zone), rectangles)
+  ((external_box, simplify zone), rectangles)
 

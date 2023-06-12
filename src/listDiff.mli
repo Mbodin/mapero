@@ -13,8 +13,10 @@ val add : O.t list -> id
   The order is unspecified. *)
 val to_list : id -> O.t list
 
+module S : Set.S with type elt = O.t
+
 (* Get the elements of a stored list as a set. *)
-val to_set : id -> Set.S with type elt = O.t
+val to_set : id -> S.t
 
 (* Return the union of two lists. *)
 val union : id -> id -> id

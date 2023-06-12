@@ -1,5 +1,13 @@
 
-(* A type to represent an aera already covered. *)
+(* A type to store a boolean zone, storing for each place whether they are covered or not. *)
+type zone
+
+(* A empty zone. *)
+val empty : zone
+
+
+
+(* A type to represent an area already covered. *)
 type t
 
 (* The empty area. *)
