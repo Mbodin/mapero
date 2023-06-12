@@ -3,8 +3,8 @@
   Information can be stored at the level of nodes (typically for non punctual data) and leaves. *)
 type ('node, 'leaf) tree =
   | Leaf of 'leaf
-  | Horizontal of 'node * tree * float * tree (* Horizontal division, with the middle x coordinate *)
-  | Vertical of 'node * tree * float * tree (* Vertical division, with the middle y coordinate *)
+  | Horizontal of 'node * ('node, 'leaf) tree * float * ('node, 'leaf) tree (* Horizontal division, with the middle x coordinate *)
+  | Vertical of 'node * ('node, 'leaf) tree * float * ('node, 'leaf) tree (* Vertical division, with the middle y coordinate *)
 
 (* We associate this spatial information with the external bounding box to get a precise zone. *)
 type ('node, 'leaf) bbtree = Bbox.t * ('node, 'leaf) tree
@@ -17,7 +17,7 @@ let default_bbox = Bbox.from_points (0., 0.) (0., 0.)
 
 let empty : zone = (default_bbox, Leaf false)
 
-(* Get a zone from a bbox. *)
+(* Get a zone from a bbox, filling up the zone. *)
 let zone_of_bbox b : zone = (b, Leaf true)
 
 
@@ -202,7 +202,8 @@ let simplify merge_node neutral_node neutral_leaf (bbox, t) =
 
 (* The simplify function can make node information less precise.
   This function aims at counter-balacing this effect.
-  It can be applied when the node information is a list of objects that can be identified spacially.
+  It can be applied when the node information includes a list of objects that
+  can be identified spacially.
   It takes a function stating whether an object is within a bbox or not. *)
 let rec specialise is_in_bbox (bbox, t) =
   let is_leaf = function
@@ -211,8 +212,8 @@ let rec specialise is_in_bbox (bbox, t) =
   (* Assuming that t is not a leaf, incorporate the provided data to t's data. *)
   let incorporate data = function
     | Leaf _ -> assert false
-    | Horizontal (data', t1, x, t2) -> Horizontal (data @ data', t1, x, t2)
-    | Vertical (data', t1, y, t2) -> Vertical (data @ data', t1, y, t2) in
+    | Horizontal ((state, data'), t1, x, t2) -> Horizontal ((state, data @ data'), t1, x, t2)
+    | Vertical ((state, data'), t1, y, t2) -> Vertical ((state, data @ data'), t1, y, t2) in
   (* Extract from data the objects within the provided bbox and incorporate it into t. *)
   let aux data t bbox =
     let t = specialise is_in_bbox (bbox, t) in
@@ -222,14 +223,14 @@ let rec specialise is_in_bbox (bbox, t) =
       (data, incorporate data_inner t) in
   match t with
   | Leaf _ -> (bbox, t)
-  | Horizontal (data, t1, x, t2) ->
+  | Horizontal ((state, data), t1, x, t2) ->
     let (data, t1) = aux t1 {bbox with Bbox.max_x = x} in
     let (data, t2) = aux t2 {bbox with Bbox.min_x = x} in
-    Horizontal (data, t1, x, t2)
-  | Vertical (data, t1, y, t2) ->
+    Horizontal ((state, data), t1, x, t2)
+  | Vertical ((state, data), t1, y, t2) ->
     let (data, t1) = aux t1 {bbox with Bbox.max_y = y} in
     let (data, t2) = aux t2 {bbox with Bbox.min_y = y} in
-    Vertical (data, t1, y, t2)
+    Vertical ((state, data), t1, y, t2)
 
 (* Extend a zone to a larger bbox, without changing its meaning.
   It takes a neutral element for leaves. *)
@@ -241,32 +242,30 @@ let extend neutral_leaf (b1, t) b2 =
   let t = Vertical (empty, b1.min_y, Vertical (t, b1.max_y, empty)) in
   (b2, t)
 
-(* TODO: Stopped here. *)
-
 (* Add a bbox to a zone. *)
-let add_bbox z b2 =
-  let (b, t) = extend z b2 in
-  let (b', t') = extend (zone_of_bbox b2) b in
+let add_bbox (z : zone) b2 =
+  let (b, t) = extend false z b2 in
+  let (b', t') = extend false (zone_of_bbox b2) b in
   assert (b = b') ;
   (b, union t t')
 
 (* Convert a zone into a list of rectangles. *)
-let to_bboxes (bbox, t) =
+let to_bboxes ((bbox, t) : zone) =
   let rec aux acc bbox = function
-    | Empty -> acc
-    | Full -> bbox :: acc
-    | Horizontal (t1, x, t2) ->
+    | Leaf false -> acc
+    | Leaf true -> bbox :: acc
+    | Horizontal ((), t1, x, t2) ->
       let acc = aux acc {bbox with Bbox.max_x = min bbox.Bbox.max_x x} t1 in
       let acc = aux acc {bbox with Bbox.min_x = max bbox.Bbox.min_x x} t2 in
       acc
-    | Vertical (t1, y, t2) ->
+    | Vertical ((), t1, y, t2) ->
       let acc = aux acc {bbox with Bbox.max_y = min bbox.Bbox.max_y y} t1 in
       let acc = aux acc {bbox with Bbox.min_y = max bbox.Bbox.min_y y} t2 in
       acc in
   aux [] bbox t
 
 (* Compute the square of the distance between two rectangles rect1 and rect2.
-  It's faster to compute and equivalent to the distance for sorting. *)
+  It is faster to compute and equivalent to the distance for sorting. *)
 let distance rect1 rect2 =
   let (cx1, cy1) = Bbox.center rect1 in
   let (cx2, cy2) = Bbox.center rect2 in
@@ -405,5 +404,5 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
       compare (distance box rect1) (distance box rect2)) rectangles in
   (* Applying the chosen rectangles to the final box. *)
   let zone = List.fold_left add_bbox zone rectangles in
-  ((external_box, simplify zone), rectangles)
+  ((external_box, simplify (fun () () -> ()) () false zone), rectangles)
 

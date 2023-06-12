@@ -5,14 +5,6 @@ type zone
 (* A empty zone. *)
 val empty : zone
 
-
-
-(* A type to represent an area already covered. *)
-type t
-
-(* The empty area. *)
-val empty : t
-
 (* Provide a bbox to be covered.
   Return the updated zone, as well as a list of smaller bbox to be scanned to properly cover
   the provided bbox, but without scanning too much.
@@ -22,5 +14,5 @@ val empty : t
   overlap, but small rectangles that are close one with the other will be merged.
   A safe scale can be provided (for example 1.5) to enable the list of bbox returned to cover
   up to safe times the argument bbox in coverage. *)
-val add : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float -> t -> Bbox.t -> t * Bbox.t list
+val add : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float -> zone -> Bbox.t -> zone * Bbox.t list
 

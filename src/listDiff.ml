@@ -48,7 +48,7 @@ let add l =
 let to_set id =
   if id = 0 then S.empty
   else
-    match IMap.find_opt id1 !sets with
+    match IMap.find_opt id !sets with
     | None ->
       (* No id can be created outside this file because of the module abstraction. *)
       assert false
