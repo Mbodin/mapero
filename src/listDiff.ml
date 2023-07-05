@@ -93,13 +93,13 @@ let union =
   memoise2 normalise_commutative
     ((* If one if empty, we just take the other one. *)
       special_cases_0_id (fun id -> id) (fun id -> id) (fun id -> id))
-    (fun s1 s2 -> add (S.union s1 s2))
+    (fun s1 s2 -> add_set (S.union s1 s2))
 
 let inter id1 id2 =
   memoise2 normalise_commutative
     ((* If one if empty, then we get the empty set. *)
       special_cases_0_id (fun _ -> 0) (fun _ -> 0) (fun id -> id))
-    (fun s1 s2 -> add (S.inter s1 s2))
+    (fun s1 s2 -> add_set (S.inter s1 s2))
 
 let diff =
   memoise2 (fun id12 -> id12 (* Not commutative, so no normalisation *))
