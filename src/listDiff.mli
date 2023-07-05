@@ -6,6 +6,9 @@ module Make (O : Set.OrderedType) : sig
 (* An identifier for each stored list. *)
 type id
 
+(* As the convention goes, we also name it t. *)
+type t = id
+
 (* Add a list to the store (if not already in it), and return its id. *)
 val add : O.t list -> id
 

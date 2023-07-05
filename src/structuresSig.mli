@@ -15,8 +15,8 @@ module type Lattice = sig
 
   type t
 
-  val join : t -> t -> t
-  val merge : t -> t -> t
+  val union : t -> t -> t
+  val inter : t -> t -> t
 
 end
 

@@ -29,15 +29,15 @@ module Make (K : StructuresSig.Lattice)
                 (* Type of spatial objects *)
                 type t
 
-                (* Determine whether the object is within this bbox. *)
-                val is_in_bbox : t -> Bbox.t -> bool
+                (* Determine (an overapproximation of) the bbox of the object. *)
+                val bbox : t -> Bbox.t
               end)
             (P : sig
                 (* Type of punctual objects *)
                 type t
 
-                (* Get the coordinate of a punctual object. *)
-                val coordinate : t -> Geometry.real_coordinates
+                (* Get the coordinates of a punctual object. *)
+                val coordinates : t -> Geometry.real_coordinates
               end) : sig
 
 (* A more general type than zone. *)

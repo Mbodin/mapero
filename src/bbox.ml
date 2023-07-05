@@ -16,6 +16,16 @@ let from_points (x1, y1) (x2, y2) =
     max_y = y2
   }
 
+let enclosing l =
+  let get m p = List.fold_left m infinity in
+  let (lx, ly) = List.split l in
+  {
+    min_x = get min lx ;
+    max_x = get max lx ;
+    min_y = get min ly ;
+    max_y = get max ly
+  }
+
 let center b =
   let x = (b.min_x +. b.max_x) /. 2. in
   let y = (b.min_y +. b.max_y) /. 2. in

@@ -125,7 +125,7 @@ let simplify merge_node neutral_node neutral_leaf (bbox, t) =
     match t1, t2 with
     | Leaf _, Leaf _ -> t1 = t2
     | Horizontal (_, t1a, x1, t1b), Horizontal (_, t2a, x2, t2b) -> t1a = t2a && x1 = x2 && t1b = t2b
-    | Vertical (_, t1a, y1, t1b), Vertical (_, t2a, y2, t2b) -> t1a = t2a && x1 = x2 && t1b = t2b
+    | Vertical (_, t1a, y1, t1b), Vertical (_, t2a, y2, t2b) -> t1a = t2a && y1 = y2 && t1b = t2b
     | _, _ -> false in
   (* Assuming [compare_trees t1 t2], merge both trees with its local node data. *)
   let merge_trees t1 t2 =

@@ -10,6 +10,9 @@ type t = {
 (* Create a bbox from two corner points. *)
 val from_points : Geometry.real_coordinates -> Geometry.real_coordinates -> t
 
+(* Create a bbox from a (non-empty) list of points. *)
+val enclosing : Geometry.real_coordinates list -> t
+
 (* The center of a bbox. *)
 val center : t -> Geometry.real_coordinates
 

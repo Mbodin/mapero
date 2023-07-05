@@ -10,6 +10,7 @@ module IMap = Map.Make (Structures.IntOrder)
 module IMap2 = Map.Make (Structures.ProductOrderedType (Structures.IntOrder) (Structures.IntOrder))
 
 type id = int
+type t = id
 
 (* The stored sets. *)
 let sets : S.t IMap.t ref = ref IMap.empty
@@ -103,7 +104,7 @@ let inter id1 id2 =
 
 let diff =
   memoise2 (fun id12 -> id12 (* Not commutative, so no normalisation *))
-    (special_cases
+    (special_cases_0_id
       (fun _ -> 0 (* [] - id2 = [] *))
       (fun id1 -> id1 (* id1 - [] = id1 *))
       (fun _ -> (* id - id = [] *) 0))
