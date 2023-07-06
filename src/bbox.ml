@@ -17,7 +17,9 @@ let from_points (x1, y1) (x2, y2) =
   }
 
 let enclosing l =
-  let get m p = List.fold_left m infinity in
+  let get m = function
+    | [] -> assert false
+    | x :: l -> List.fold_left m x l in
   let (lx, ly) = List.split l in
   {
     min_x = get min lx ;

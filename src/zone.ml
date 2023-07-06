@@ -146,7 +146,7 @@ let simplify merge_node neutral_node neutral_leaf (bbox, t) =
         Leaf d
       else
         (* The data is important: we add a dummy division. *)
-        let (d, t1, x, t2) = (data, Leaf neutral_leaf, neg_infinity, Lead d) in
+        let (d, t1, x, t2) = (data, Leaf neutral_leaf, neg_infinity, Leaf d) in
         if mode then Horizontal (d, t1, x, t2) else Vertical (d, t1, x, t2)
     | Horizontal (data', t1, x, t2) -> Horizontal (merge_node data data', t1, x, t2)
     | Vertical (data', t1, y, t2) -> Vertical (merge_node data data', t1, y, t2) in

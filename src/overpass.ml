@@ -19,24 +19,28 @@ module Make (R : sig
                    type polygon
                  end) = struct
 
-(* OSM nodes. *)
 type node = {
   coord : Geometry.real_coordinates ;
   repr : R.node
 }
 
-(* OSM ways. *)
 type way = {
-  nodes : Geometry.real_coordinates list (* The list of node coordinates composing the way. *) ;
+  nodes : Geometry.real_coordinates list ;
   repr : R.way
 }
 
-(* OSM polygons. *)
 type polygon = {
-  nodes : Geometry.real_coordinates list (* The list of node coordinates composing the polygon. *) ;
-  (* TODO: Include holes, as in multipolygons. *)
+  nodes : Geometry.real_coordinates list ;
   repr : R.polygon
 }
+
+type objects = {
+  nodes : node list ;
+  ways : way list ;
+  polygons : polygon list ;
+  partial : bool
+}
+
 
 (* Modules to build the Zone interface. *)
 
@@ -46,39 +50,89 @@ module Punctual = struct
 end
 
 module Spatial = struct
+
   type t =
     | Way of way
     | Polygon of polygon
+
   let bbox = function
     | Way w -> Bbox.enclosing w.nodes
     | Polygon p -> Bbox.enclosing p.nodes
+
+  (* From a [t list], fetch the list of ways and polygons. *)
+  let partition =
+    List.partition_map (function
+      | Way w -> Either.Left w
+      | Polygon p -> Either.Right p)
+
 end
 
 module Area = Zone.Make (AttrDiff) (Spatial) (Punctual)
 
+(* Each scan request is associated to an identifier, which helps remove then afterwards if needed. *)
+module ScanId : sig
+  type t
+  val get : unit -> t
+  module Map : Map.S with type key = t
+end = struct
+  type t = int
+  let get =
+    let current = ref 0 in fun _ ->
+    incr !current ;
+    !current
+  module Map = Map.Make (Structures.IntOrder)
+end
+
 type cache_type = {
-  pois : node IMap.t (* The PoIs of the map to be displayed *) ;
+  (*pois : node IMap.t (* The PoIs of the map to be displayed *) ;
   ways : way IMap.t (* The ways. *) ;
-  polygons : polygon IMap.t (* The polygons. *) ;
+  polygons : polygon IMap.t (* The polygons. *) ;*) (* TODO: Do we really need them? *)
   zone : Area.t (* The zone which has already been requested. *) ;
-  future_scans : (Bbox.t * AttrDiff.t) list (* Planned scans. *)
+  future_scans : (Bbox.t * AttrDiff.t * ScanId.t) list (* Planned scans. *) ;
+  continuations : (objects -> unit) ScanId.Map.t (* Continuations to call when the corresponding scan has been completed. *)
 }
 
 (* The global cache, to avoid calling Overpass too frequently. *)
 let cache =
   ref {
-    pois = IMap.empty ;
+    (* pois = IMap.empty ;
     ways = IMap.empty ;
-    polygons = IMap.empty ;
-    zone = Zone.empty ;
-    future_scans = []
+    polygons = IMap.empty ; *)
+    zone = Area.empty ;
+    future_scans = [] ;
+    continuations = ScanId.Map.empty
   }
 
-let scan bbox =
+(* Set a bbox for future scanning. *)
+let scan id bbox =
   let scans = Area.where_to_scan !cache.zone bbox in (* TODO: Fill nice values for maxwidth, safe_factor, etc. *)
+  let scans = List.map (fun (bbox, k) -> (bbox, k, id)) scans in
   cache := { !cache with future_scans = scans @ !cache.future_scans }
-
 (* TODO: Add a runner that regularly checks for the next future scan. *)
+
+(* Remove everything about a scan identifier. *)
+let remove id =
+  cache := { !cache with
+               future_scans = List.filter (fun (_bbox, _k, id') -> id <> id') !cache.future_scans ;
+               continuations = ScanId.Map.remove id !cache.continuations }
+
+(* As of get_objects, return all the objects within a given bbox, but without actually
+  performing any request. *)
+let get_objects_raw id bbox =
+  let spatial = Area.get_spatial bbox ~partial:true !cache.zone in
+  let (ways, polygons) = Spatial.partition spatial in
+  {
+    nodes = Area.get_punctual bbox !cache.zone ;
+    ways = ways ;
+    polygons = polygons ;
+    partial = List.exists (fun (_bbox, _k, id') -> id' = id) !cache.future_scans
+  }
+
+let get_objects bbox ?(update=fun _ -> ()) =
+  let id = ScanId.get () in
+  cache := { !cache with continuations = ScanId.Map.add id update } ;
+  scan id bbox ;
+  (get_objects_raw id bbox, fun _ -> remove id)
 
 end
 
