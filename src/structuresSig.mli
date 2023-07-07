@@ -15,8 +15,11 @@ module type Lattice = sig
 
   type t
 
+  (* Union and intersection. *)
   val union : t -> t -> t
   val inter : t -> t -> t
 
+  (* Bottom element. *)
+  val bot : t
 end
 

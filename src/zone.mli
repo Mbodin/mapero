@@ -74,5 +74,8 @@ val get_spatial : Bbox.t -> ?partial:bool -> t -> S.t list
 val where_to_scan : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float ->
   t -> Bbox.t -> K.t -> (Bbox.t * K.t) list
 
+(* To be called from time to time to simplify the internal representation of the data. *)
+val soft_optimise : t -> t
+
 end
 

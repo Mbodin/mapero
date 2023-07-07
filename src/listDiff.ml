@@ -103,7 +103,7 @@ let inter =
     (fun s1 s2 -> add_set (S.inter s1 s2))
 
 let diff =
-  memoise2 (fun id12 -> id12 (* Not commutative, so no normalisation *))
+  memoise2 (fun id1 id2 -> (id1, id2) (* Not commutative, so no normalisation *))
     (special_cases_0_id
       (fun _ -> 0 (* [] - id2 = [] *))
       (fun id1 -> id1 (* id1 - [] = id1 *))

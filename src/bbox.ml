@@ -16,6 +16,13 @@ let from_points (x1, y1) (x2, y2) =
     max_y = y2
   }
 
+let singleton (x, y) = {
+  min_x = x ;
+  max_x = x ;
+  min_y = y ;
+  max_y = y
+}
+
 let enclosing l =
   let get m = function
     | [] -> assert false

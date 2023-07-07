@@ -203,7 +203,7 @@ let simplify merge_node neutral_node neutral_leaf (bbox, t) =
 (* The simplify function can make node information less precise.
   This function aims at counter-balacing this effect.
   It can be applied when the node information includes a list of objects that
-  can be identified spacially.
+  can be identified spatially.
   It takes a function stating whether an object is within a bbox or not. *)
 let rec specialise is_in_bbox (bbox, t) =
   let is_leaf = function
@@ -216,7 +216,7 @@ let rec specialise is_in_bbox (bbox, t) =
     | Vertical ((state, data'), t1, y, t2) -> Vertical ((state, data @ data'), t1, y, t2) in
   (* Extract from data the objects within the provided bbox and incorporate it into t. *)
   let aux data t bbox =
-    let t = specialise is_in_bbox (bbox, t) in
+    let (bbox, t) = specialise is_in_bbox (bbox, t) in
     if is_leaf t then (data, t)
     else
       let (data_inner, data) = List.partition (is_in_bbox bbox) data in
@@ -224,13 +224,13 @@ let rec specialise is_in_bbox (bbox, t) =
   match t with
   | Leaf _ -> (bbox, t)
   | Horizontal ((state, data), t1, x, t2) ->
-    let (data, t1) = aux t1 {bbox with Bbox.max_x = x} in
-    let (data, t2) = aux t2 {bbox with Bbox.min_x = x} in
-    Horizontal ((state, data), t1, x, t2)
+    let (data, t1) = aux data t1 {bbox with Bbox.max_x = x} in
+    let (data, t2) = aux data t2 {bbox with Bbox.min_x = x} in
+    (bbox, Horizontal ((state, data), t1, x, t2))
   | Vertical ((state, data), t1, y, t2) ->
-    let (data, t1) = aux t1 {bbox with Bbox.max_y = y} in
-    let (data, t2) = aux t2 {bbox with Bbox.min_y = y} in
-    Vertical ((state, data), t1, y, t2)
+    let (data, t1) = aux data t1 {bbox with Bbox.max_y = y} in
+    let (data, t2) = aux data t2 {bbox with Bbox.min_y = y} in
+    (bbox, Vertical ((state, data), t1, y, t2))
 
 (* Extend a zone to a larger bbox, without changing its meaning.
   It takes a neutral element for leaves. *)
@@ -405,4 +405,91 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
   (* Applying the chosen rectangles to the final box. *)
   let zone = List.fold_left add_bbox zone rectangles in
   ((external_box, simplify (fun () () -> ()) () false zone), rectangles)
+
+
+module Make (K : StructuresSig.Lattice)
+            (S : sig
+                type t
+                val bbox : t -> Bbox.t
+              end)
+            (P : sig
+                type t
+                val coordinates : t -> Geometry.real_coordinates
+              end) : sig
+
+type t = {
+  bbtree : (S.t option, K.t * P.t list) bbtree ;
+  time_before_optimisation : int (* Optimisation is costly, so we only do it from time to time. *)
+}
+
+(* Number of operations performed between two optimisations. *)
+let base_time_before_optimisation = 10
+
+let empty = {
+  bbtree = (default_bbox, Leaf None) ;
+  time_before_optimisation = base_time_before_optimisation
+}
+
+(* Operations about node data information. *)
+let merge_node (k1, l1) (k2, l2) =
+  (K.join k1 k2, l1 @ l2)
+let neutral_leaf = None
+let neutral_node = (K.bot, [])
+let is_in_bbox bbox (s : S.t) =
+  Bbox.included (S.bbox s) bbox
+
+(* Only optimise when the associated counter reaches 0. *)
+let soft_optimise t =
+  if t.time_before_optimisation <= 0 then {
+    bbtree = specialise is_in_bbox (simplify merge_node neutral_node neutral_leaf t.bbtree) ;
+    time_before_optimisation = base_time_before_optimisation
+  } else { t with time_before_optimisation = t.time_before_optimisation - 1 }
+
+let add_punctual t p =
+  let coords = P.coordinates p in
+  let rec aux bbox = function
+    | Leaf None ->
+      assert (Bbox.is_in bbox coords) ;
+      Leaf p
+    | Leaf p' ->
+      (* We need here to split either vertically or horizontally.
+        We decide on the bigger separation between p and p'. *)
+      let coords' = P.coordinates p' in
+      let dist proj = Float.abs (proj coords -. proj coords') in
+      let average x1 x2 = (x1 +. x2) /. 2. in
+      if dist fst > dist snd then
+        let (p1, p2) = if fst p > fst p' then (p', p) else (p, p') in
+        Vertical (neutral_node, Leaf p1, average (fst p1) (fst p2), Leaf p2)
+      else
+        let (p1, p2) = if snd p > snd p' then (p', p) else (p, p') in
+        Horizontal (neutral_node, Leaf p1, average (snd p1) (snd p2), Leaf p2)
+    | Horizontal (kl, t1, x, t2) ->
+      if fst coords > x then
+        Horizontal (kl, t1, x, aux {bbox with Bbox.min_x = x} t2)
+      else
+        Horizontal (kl, aux {bbox with Bbox.max_x = x} t1, x, t2)
+    | Vertical (kl, t1, y, t2) ->
+      if snd coords > y then
+        Vertical (kl, t1, y, aux {bbox with Bbox.min_y = y} t2)
+      else
+        Vertical (kl, aux {bbox with Bbox.max_y = y} t1, y, t2) in
+  let (bbox, tree) = extend None t.bbtree (Bbox.singleton coords) in
+  let tree = aux bbox tree in
+  { t with bbtree = (bbox, tree) }
+
+let add_spatial t s =
+  let bbox = S.bbox s in
+  (* TODO *) t
+
+let add_knowledge t bbox k = (* TODO *) t
+
+let get_punctual bbox t = (* TODO *) []
+
+let get_spatial bbox ?(partial=false) t = (* TODO *) []
+
+let where_to_scan ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
+    ?(safe_factor=1.) t bbox k =
+  (* TODO *) []
+
+end
 

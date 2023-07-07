@@ -10,7 +10,10 @@ module AttrOrder : Set.OrderedType with type t = Osm.attributes = struct
 
 (* A store for attribute lists.
   In this context, they represent the attribute lists that have to be queried to display the map. *)
-module AttrDiff = ListDiff.Make (AttrOrder)
+module AttrDiff = struct
+  include ListDiff.Make (AttrOrder)
+  let bot = add []
+end
 
 
 module Make (R : sig
@@ -78,7 +81,7 @@ end = struct
   type t = int
   let get =
     let current = ref 0 in fun _ ->
-    incr !current ;
+    incr current ;
     !current
   module Map = Map.Make (Structures.IntOrder)
 end
@@ -108,7 +111,8 @@ let scan id bbox =
   let scans = Area.where_to_scan !cache.zone bbox in (* TODO: Fill nice values for maxwidth, safe_factor, etc. *)
   let scans = List.map (fun (bbox, k) -> (bbox, k, id)) scans in
   cache := { !cache with future_scans = scans @ !cache.future_scans }
-(* TODO: Add a runner that regularly checks for the next future scan. *)
+(* TODO: Add a runner that regularly checks for the next future scan.
+  This runner should call soft_optimise after doing the request. *)
 
 (* Remove everything about a scan identifier. *)
 let remove id =
