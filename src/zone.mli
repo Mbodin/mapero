@@ -56,11 +56,11 @@ val add_punctual : t -> P.t -> t
 val add_knowledge : t -> Bbox.t -> K.t -> t
 
 (* Get all the objects within this bbox. *)
-val get_punctual : Bbox.t -> t -> P.t list
+val get_punctual : Bbox.t -> t -> P.t Seq.t
 
 (* Get all the objects within this bbox.
   The partial boolean state whether we should also include objects partially within this bbox. *)
-val get_spatial : Bbox.t -> ?partial:bool -> t -> S.t list
+val get_spatial : Bbox.t -> ?partial:bool -> t -> S.t Seq.t
 
 (* If one wants to scan an aera for a given level of knowledge, this function
   returns a list of subareas to be scanned, each with the lacking level of
