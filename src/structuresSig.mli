@@ -21,5 +21,6 @@ module type Lattice = sig
 
   (* Bottom element. *)
   val bot : t
+
 end
 

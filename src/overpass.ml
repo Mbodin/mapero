@@ -15,6 +15,14 @@ module AttrDiff = struct
   let bot = add []
 end
 
+let settings_to_attributes styles =
+  let translate l = List.map fst l in
+  List.concat [
+    translate styles.Osm.nodes ;
+    translate styles.Osm.ways ;
+    translate styles.Osm.polygons
+  ]
+
 
 module Make (R : sig
                    type node
@@ -92,6 +100,7 @@ type cache_type = {
   polygons : polygon IMap.t (* The polygons. *) ;*) (* TODO: Do we really need them? *)
   zone : Area.t (* The zone which has already been requested. *) ;
   future_scans : (Bbox.t * AttrDiff.t * ScanId.t) list (* Planned scans. *) ;
+  lookup : AttrDiff.t (* The current set of attributes that we are interested in. *) ;
   continuations : (objects -> unit) ScanId.Map.t (* Continuations to call when the corresponding scan has been completed. *)
 }
 
@@ -103,12 +112,17 @@ let cache =
     polygons = IMap.empty ; *)
     zone = Area.empty ;
     future_scans = [] ;
-    continuations = ScanId.Map.empty
+    lookup = AttrDiff.bot ;
+    continuations = ScanId.Map.empty ;
   }
 
-(* Set a bbox for future scanning. *)
-let scan id bbox =
-  let scans = Area.where_to_scan !cache.zone bbox in (* TODO: Fill nice values for maxwidth, safe_factor, etc. *)
+let set_lookup l =
+  cache := { !cache with lookup = AttrDiff.add l }
+
+(* Set a bbox for future scanning.
+  The id is the scan identifier, and k is the knowledge information. *)
+let scan id bbox k =
+  let scans = Area.where_to_scan !cache.zone bbox k in (* TODO: Fill nice values for maxwidth, safe_factor, etc. *)
   let scans = List.map (fun (bbox, k) -> (bbox, k, id)) scans in
   cache := { !cache with future_scans = scans @ !cache.future_scans }
 (* TODO: Add a runner that regularly checks for the next future scan.
@@ -135,7 +149,7 @@ let get_objects_raw id bbox =
 let get_objects bbox ?(update=fun _ -> ()) =
   let id = ScanId.get () in
   cache := { !cache with continuations = ScanId.Map.add id update } ;
-  scan id bbox ;
+  scan id bbox !cache.lookup ;
   (get_objects_raw id bbox, fun _ -> remove id)
 
 end

@@ -44,6 +44,15 @@ type objects = {
   partial : bool (* State whether it is a partial response (that is, whether further objects are expected to come afterwards for the same request.) *)
 }
 
+(* Set-up the conjunction of attributes that will be look-up when fetching objects from Overpass.
+  Each Osm.attributes is a list, to be interpreted as a conjunction, and we can fetch a list.
+  In contrary to the Osm module (which is meant to precisely describe the object styles), we
+  do not here separate between nodes, ways, and polygons. *)
+val set_lookup : Osm.attributes list -> unit
+
+(* A helper function to translate Osm.styles into a raw lis tof attributes. *)
+val settings_to_attributes : Osm.styles -> Osm.attributes list
+
 (* Get all the objects in a bbox.
   The actual answer only features the objects known at request time.
   There might be further objects that are discovered afterwards (see the partial field of the objects type).

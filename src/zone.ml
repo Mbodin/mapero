@@ -1,6 +1,9 @@
 
 (* A type to store spacially localised information.
-  Information can be stored at the level of nodes (typically for non punctual data) and leaves. *)
+  Information can be stored at the level of nodes (typically for non punctual data) and leaves.
+  The choice of name is criticable: I associated horizontal with a x-division and vertical with
+  an y-division (that is horizontal and vertical layouts, not a horizontal and vertical separation
+  bar. *)
 type ('node, 'leaf) tree =
   | Leaf of 'leaf
   | Horizontal of 'node * ('node, 'leaf) tree * float * ('node, 'leaf) tree (* Horizontal division (that is vertically splitted), with the middle x coordinate *)
@@ -19,6 +22,14 @@ let empty : zone = (default_bbox, Leaf false)
 
 (* Get a zone from a bbox, filling up the zone. *)
 let zone_of_bbox b : zone = (b, Leaf true)
+
+(* Recognise a leaf. *)
+let is_leaf = function
+  | Leaf _ -> true
+  | _ -> false
+
+(* Recognise a node. *)
+let is_node t = not (is_leaf t)
 
 
 (* Restriction functions of a tree along a semi-line. *)
@@ -206,9 +217,6 @@ let simplify merge_node neutral_node neutral_leaf (bbox, t) =
   can be identified spatially.
   It takes a function stating whether an object is within a bbox or not. *)
 let rec specialise is_in_bbox (bbox, t) =
-  let is_leaf = function
-    | Leaf _ -> true
-    | _ -> false in
   (* Assuming that t is not a leaf, incorporate the provided data to t's data. *)
   let incorporate data = function
     | Leaf _ -> assert false
@@ -243,19 +251,26 @@ let rec specialise is_in_bbox (bbox, t) =
     (bbox, Vertical ((state, data), t1, y, t2))
 
 (* Extend a zone to a larger bbox, without changing its meaning.
-  It takes a neutral element for leaves. *)
-let extend neutral_leaf (b1, t) b2 =
+  It takes a neutral element for nodes and leaves. *)
+let extend neutral_node neutral_leaf (b1, t) b2 =
   let open Bbox in
   let b2 = outer b1 b2 in
   let empty = Leaf neutral_leaf in
-  let t = Horizontal (empty, b1.min_x, Horizontal (t, b1.max_x, empty)) in
-  let t = Vertical (empty, b1.min_y, Vertical (t, b1.max_y, empty)) in
+  let t =
+    Horizontal (neutral_node, empty, b1.Bbox.min_x,
+      Horizontal (neutral_node, t, b1.Bbox.max_x, empty)) in
+  let t =
+    Vertical (neutral_node, empty, b1.Bbox.min_y,
+      Vertical (neutral_node, t, b1.Bbox.max_y, empty)) in
   (b2, t)
+
+(* A specialised version of extend for zones. *)
+let extend_zone : zone -> bbox -> zone = extend () false
 
 (* Add a bbox to a zone. *)
 let add_bbox (z : zone) b2 =
-  let (b, t) = extend false z b2 in
-  let (b', t') = extend false (zone_of_bbox b2) b in
+  let (b, t) = extend_zone z b2 in
+  let (b', t') = extend_zone (zone_of_bbox b2) b in
   assert (b = b') ;
   (b, union t t')
 
@@ -388,11 +403,11 @@ let fit_to_dimensions maxwidth maxheight minwidth minheight rectangles =
 let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
     ?(safe_factor=1.) zone box =
   let bonus_box = Bbox.scale box safe_factor in
-  let zone = extend zone bonus_box in
+  let zone = extend_zone zone bonus_box in
   let (external_box, t) = zone in
   (* All the rectangles that would be missing for a given bbox. *)
   let missing box =
-    let (_, missing_t) = extend (zone_of_bbox box) external_box in
+    let (_, missing_t) = extend_zone (zone_of_bbox box) external_box in
     let t = intersection (negation t) missing_t in
     to_bboxes (box, t) in
   let must_rectangles = missing box in
@@ -427,8 +442,35 @@ module Make (K : StructuresSig.Lattice)
                 val coordinates : t -> Geometry.real_coordinates
               end) = struct
 
+let mix_objects l =
+  let a = Array.of_list l in
+  let rec aux b e =
+    (* Mix the elements of a from b to e included. *)
+    if b = e then Seq.return a.(b)
+    else if e < b then Seq.empty
+    else (
+      let c = (b + e) / 2 in
+      Seq.cons a.(c) (Seq.append (aux b (c - 1)) (aux (c + 1) e))
+    ) in
+  List.of_seq (aux 0 (Array.length a - 1))
+
+(* We enrich K with an order relation.
+  This assumes that the equality over K is the usual structural equality [=]. *)
+module K = struct
+    include K
+
+    let le k1 k2 =
+      union k1 k2 = k2
+
+    let ge k1 k2 = le k2 k1
+
+  end
+
+(* Specialised trees adapted to the provided types. *)
+type t_tree = (S.t option, K.t * P.t list) bbtree
+
 type t = {
-  bbtree : (S.t option, K.t * P.t list) bbtree ;
+  bbtree : t_tree ;
   time_before_optimisation : int (* Optimisation is costly, so we only do it from time to time. *)
 }
 
@@ -439,6 +481,9 @@ let empty = {
   bbtree = (default_bbox, Leaf None) ;
   time_before_optimisation = base_time_before_optimisation
 }
+
+(* A specialised version of extend for t_tree. *)
+let extend_t : t_tree -> bbox -> t_tree = extend (K.bot, []) None
 
 (* Operations about node data information. *)
 let merge_node (k1, l1) (k2, l2) =
@@ -483,7 +528,7 @@ let add_punctual t p =
         Vertical (kl, t1, y, aux {bbox with Bbox.min_y = y} t2)
       else
         Vertical (kl, aux {bbox with Bbox.max_y = y} t1, y, t2) in
-  let (bbox, tree) = extend None t.bbtree (Bbox.singleton coords) in
+  let (bbox, tree) = extend_t t.bbtree (Bbox.singleton coords) in
   let tree = aux bbox tree in
   { t with bbtree = (bbox, tree) }
 
@@ -492,8 +537,12 @@ let add_spatial t s =
   (* We add the spatial object in the node best suited for it, without adding any node. *)
   let rec aux k bbox = function
     | Leaf None ->
-      (* We have to create a node. By default, we create it horizontally. *)
-      Horizontal (k, Leaf None, fst (Bbox.center bbox), Leaf None)
+      (* We have to create a node. By default, we create it according to the longer distance. *)
+        let (dimx, dimy) = Bbox.dimensions bbox in
+        if dimx > dimy then
+          Horizontal ((k, [s]), Leaf None, fst (Bbox.center bbox), Leaf None)
+        else
+          Vertical ((k, [s]), Leaf None, snd (Bbox.center bbox), Leaf None)
     | Leaf (Some p) ->
       (* We have to create a node: we create it in the direction were this point is further
         away from the center. *)
@@ -502,17 +551,17 @@ let add_spatial t s =
       if dist fst > dist snd then
         let y = snd (Bbox.center bbox) in
         let (p1, p2) = if snd proj > y then (None, Some p) else (Some p, None) in
-        Vertical (k, Leaf p1, y, Leaf p2)
+        Vertical ((k, [s]), Leaf p1, y, Leaf p2)
       else
         let x = fst (Bbox.center bbox) in
         let (p1, p2) = if fst proj > x then (None, Some p) else (Some p, None) in
-        Horizontal (k, Leaf None, x, Leaf None)
+        Horizontal ((k, [s]), Leaf None, x, Leaf None)
     | Horizontal ((k, sl), t1, x, t2) ->
       let bbox1 = {bbox with Bbox.max_x = x} in
       let bbox2 = {bbox with Bbox.min_x = x} in
-      if Bbox.included sbbox bbox1 then
+      if Bbox.included sbbox bbox1 && is_node t1 then
         Horizontal ((k, sl), aux k bbox1 t1, x, t2)
-      else if Bbox.included sbbox bbox1 then
+      else if Bbox.included sbbox bbox1 && is_node t2 then
         Horizontal ((k, sl), t1, x, aux k bbox2 t2)
       else (
         assert (Bbox.included sbbox bbox) ;
@@ -521,22 +570,93 @@ let add_spatial t s =
     | Vertical ((k, sl), t1, y, t2) ->
       let bbox1 = {bbox with Bbox.max_y = y} in
       let bbox2 = {bbox with Bbox.min_y = y} in
-      if Bbox.included sbbox bbox1 then
+      if Bbox.included sbbox bbox1 && is_node t1 then
         Vertical ((k, sl), aux k bbox1 t1, y, t2)
-      else if Bbox.included sbbox bbox1 then
+      else if Bbox.included sbbox bbox1 && is_node t2 then
         Vertical ((k, sl), t1, y, aux k bbox2 t2)
       else (
         assert (Bbox.included sbbox bbox) ;
         Vertical ((k, s :: sl), t1, y, t2)
       ) in
-  let (bbox, tree) = extend None t.bbtree sbbox in
+  let (bbox, tree) = extend_t t.bbtree sbbox in
   let tree = aux K.bot bbox tree in
   { t with bbtree = (bbox, tree) }
 
-let add_knowledge t bbox k =
+let add_knowledge t kbbox k =
   (* In contrary to add_spatial, we want to store the information as precisely as possible here:
     we need to add nodes one the way. *)
-  (* TODO *) t
+  let rec aux k' bbox = function
+    | Leaf po ->
+      assert (Bbox.overlap bbox kbbox) ;
+      assert (not (K.le k k')) ;
+      (* A function that inserts [po] if it is in the right place. *)
+      let add_po bbox =
+        (* Coordinates to where to insert [po]. *)
+        let coords =
+          match po with
+          | Some p -> P.coordinates p
+          | None -> Bbox.center bbox in
+        if Bbox.is_in bbox coords then po
+        else None in
+      (* The center box, containing k.
+        It contains a dummy division to be able to store k. *)
+      let t =
+        let t = Leaf (add_po kbbox) in
+        Horizontal ((k, []), Leaf None, neg_infinity, t) in
+      (* We first consider the horizontal divisions. *)
+      let t =
+        if kbbox.Bbox.min_x > bbox.Bbox.min_x then
+          let lbbox = {kbbox with Bbox.min_x = bbox.Bbox.min_x ;
+                                  Bbox.max_x = kbbox.Bbox.min_x} in
+          Horizontal ((k', []), Leaf (add_po lbbox), kbbox.Bbox.min_x, t)
+        else t in
+      let t =
+        if kbbox.Bbox.max_x < bbox.Bbox.max_x then
+          let lbbox = {kbbox with Bbox.min_x = kbbox.Bbox.max_x ;
+                                  Bbox.max_x = bbox.Bbox.max_x} in
+          Horizontal ((k', []), t, kbbox.Bbox.max_x, Leaf (add_po lbbox))
+        else t in
+      (* Then the vertical ones. *)
+      let t =
+        if kbbox.Bbox.min_y > bbox.Bbox.min_y then
+          let lbbox = {bbox with Bbox.max_y = kbbox.Bbox.min_y} in
+          Vertical ((k', []), Leaf (add_po lbbox), kbbox.Bbox.min_y, t)
+        else t in
+      let t =
+        if kbbox.Bbox.max_y < bbox.Bbox.max_y then
+          let lbbox = {bbox with Bbox.min_y = kbbox.Bbox.max_y} in
+          Horizontal ((k', []), t, kbbox.Bbox.max_y, Leaf (add_po lbbox))
+        else t in
+      t
+    | (Horizontal ((k', _), _, _, _) | Vertical ((k', _), _, _, _)) as t when K.le k k' -> t
+    | Horizontal ((k', sl), t1, x, t2) ->
+      let t1 =
+        let bbox1 = {bbox with Bbox.max_x = x} in
+        if Bbox.overlap bbox1 kbbox then
+          aux bbox1 t1
+        else t1 in
+      let t2 =
+        let bbox2 = {bbox with Bbox.min_x = x} in
+        if Bbox.overlap bbox2 kbbox then
+          aux bbox2 t2
+        else t2 in
+      Horizontal ((k', sl), t1, x, t2)
+    | Vertical ((k', sl), t1, y, t2) ->
+      let t1 =
+        let bbox1 = {bbox with Bbox.max_y = y} in
+        if Bbox.overlap bbox1 kbbox then
+          aux bbox1 t1
+        else t1 in
+      let t2 =
+        let bbox2 = {bbox with Bbox.min_y = y} in
+        if Bbox.overlap bbox2 kbbox then
+          aux bbox2 t2
+        else t2 in
+      Vertical ((k', sl), t1, y, t2)
+    in
+  let (bbox, tree) = extend_t t.bbtree sbbox in
+  let tree = if k = K.bot then tree else aux K.bot bbox tree in
+  { t with bbtree = (bbox, tree) }
 
 let get_punctual bbox t =
   let rec aux cbbox = function

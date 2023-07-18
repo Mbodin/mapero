@@ -46,6 +46,12 @@ type t
 (* Empty area *)
 val empty : t
 
+(* The order in which objects are added can greatly influence the efficiency of the structure
+  underneath. Unfortunately, inserting a mostly sorted list in order leads to poor results.
+  One could randomise, or mix then by putting the medians first. This is what this function
+  does. *)
+val mix_objects : 'a list -> 'a list
+
 (* Add a spatial object. *)
 val add_spatial : t -> S.t -> t
 

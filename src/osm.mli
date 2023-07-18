@@ -14,9 +14,6 @@ type estr =
 (* A conjunction of attribute and values that is meant to be searched. *)
 type attributes = (estr (* key *) * estr (* value *)) list
 
-(* A bounding box. *)
-type bbox = Geometry.real_coordinates * Geometry.real_coordinates
-
 (* A style, defining which objects are to be displayed, and how.
   It is parameterised by the graphical representation associated to each of the three kinds of objects. *)
 type ('n, 'w, 'p) styles_repr = {
@@ -24,13 +21,6 @@ type ('n, 'w, 'p) styles_repr = {
   ways : (attributes * 'w) list ;
   polygons : (attributes * 'p) list
 }
-
-(* The type of an Overpass request. *)
-type ('n, 'w, 'p) request = {
-  bbox : bbox ;
-  representation : ('n, 'w, 'p) styles_repr
-}
-
 
 (* The style of PoIs, among other things. *)
 type basic_style = {
@@ -54,7 +44,4 @@ type polygon_style = {
 
 (* The style for different objects. *)
 type styles = (basic_style, way_style, polygon_style) styles_repr
-
-(* Instanciation of the request type to the styles. *)
-type request_inst = (basic_style, way_style, polygon_style) request
 
