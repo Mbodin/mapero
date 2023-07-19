@@ -18,11 +18,19 @@ let map_settings = ref default_map_state
 (* TODO: It would be nice to retrieve the value it was in the last visit of the page, if any. *)
 
 
+(* Instantiating the overpass environment. *)
+module OSM =
+  Overpass.Make (struct
+    type node = Osm.basic_style
+    type way = Osm.way_style
+    type polygon = Osm.polygon_style
+  end)
+
 (* Building an Overpass query, as a function of the current settings. *)
 let overpass_query map_info =
   let styles = Settings.styles in
-  Overpass.set_lookup (Overpass.settings_to_attributes styles) ;
-  ignore Overpass.get_objects (* TODO *) ;
+  OSM.set_lookup (OSM.settings_to_attributes styles) ;
+  ignore OSM.get_objects (* TODO *) ;
   ()
 
 (* Draw the map on a Geometry.t object. *)

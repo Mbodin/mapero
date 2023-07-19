@@ -50,7 +50,7 @@ val empty : t
   underneath. Unfortunately, inserting a mostly sorted list in order leads to poor results.
   One could randomise, or mix then by putting the medians first. This is what this function
   does. *)
-val mix_objects : 'a list -> 'a list
+val mix_objects : 'a Seq.t -> 'a Seq.t
 
 (* Add a spatial object. *)
 val add_spatial : t -> S.t -> t
@@ -61,10 +61,10 @@ val add_punctual : t -> P.t -> t
 (* State that we now know a bbox up to a given level of knowledge. *)
 val add_knowledge : t -> Bbox.t -> K.t -> t
 
-(* Get all the objects within this bbox. *)
+(* Get all the punctual objects within this bbox. *)
 val get_punctual : Bbox.t -> t -> P.t Seq.t
 
-(* Get all the objects within this bbox.
+(* Get all the spatial objects within this bbox.
   The partial boolean state whether we should also include objects partially within this bbox. *)
 val get_spatial : Bbox.t -> ?partial:bool -> t -> S.t Seq.t
 
@@ -78,7 +78,7 @@ val get_spatial : Bbox.t -> ?partial:bool -> t -> S.t Seq.t
   A safe scale can be provided (for example 1.5) to enable the list of bbox returned to cover
   up to safe times the argument bbox in coverage. *)
 val where_to_scan : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float ->
-  t -> Bbox.t -> K.t -> (Bbox.t * K.t) list
+  t -> Bbox.t -> K.t -> (Bbox.t * K.t) Seq.t
 
 (* To be called from time to time to simplify the internal representation of the data. *)
 val soft_optimise : t -> t

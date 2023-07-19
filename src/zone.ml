@@ -265,7 +265,7 @@ let extend neutral_node neutral_leaf (b1, t) b2 =
   (b2, t)
 
 (* A specialised version of extend for zones. *)
-let extend_zone : zone -> bbox -> zone = extend () false
+let extend_zone : zone -> Bbox.t -> zone = extend () false
 
 (* Add a bbox to a zone. *)
 let add_bbox (z : zone) b2 =
@@ -443,7 +443,7 @@ module Make (K : StructuresSig.Lattice)
               end) = struct
 
 let mix_objects l =
-  let a = Array.of_list l in
+  let a = Array.of_seq l in
   let rec aux b e =
     (* Mix the elements of a from b to e included. *)
     if b = e then Seq.return a.(b)
@@ -452,7 +452,7 @@ let mix_objects l =
       let c = (b + e) / 2 in
       Seq.cons a.(c) (Seq.append (aux b (c - 1)) (aux (c + 1) e))
     ) in
-  List.of_seq (aux 0 (Array.length a - 1))
+  aux 0 (Array.length a - 1)
 
 (* We enrich K with an order relation.
   This assumes that the equality over K is the usual structural equality [=]. *)
@@ -483,7 +483,7 @@ let empty = {
 }
 
 (* A specialised version of extend for t_tree. *)
-let extend_t : t_tree -> bbox -> t_tree = extend (K.bot, []) None
+let extend_t : t_tree -> Bbox.t -> t_tree = extend (K.bot, []) None
 
 (* Operations about node data information. *)
 let merge_node (k1, l1) (k2, l2) =
@@ -678,11 +678,33 @@ let get_punctual bbox t =
   let (bbox, tree) = t.bbtree in
   aux bbox tree
 
-let get_spatial bbox ?(partial=false) t = (* TODO *) Seq.empty
+let get_spatial bbox ?(partial=false) t =
+  (* Given an object of bounding box bbox', should we accept it? *)
+  let accept bbox' =
+    if partial then Bbox.overlap bbox bbox'
+    else Bbox.included bbox' bbox in
+  let rec aux cbbox = function
+    | Leaf _ -> Seq.empty
+    | Horizontal ((_k, sl), t1, x, t2) ->
+      let s = Seq.filter (fun s -> accept (S.bbox s)) (List.to_seq sl) in
+      let bbox1 = {cbbox with Bbox.max_x = x} in
+      let bbox2 = {cbbox with Bbox.min_x = x} in
+      let s1 = if Bbox.overlap bbox bbox1 then aux bbox1 t1 else Seq.empty in
+      let s2 = if Bbox.overlap bbox bbox2 then aux bbox2 t2 else Seq.empty in
+      Seq.append s (Seq.append s1 s2)
+    | Vertical (_, t1, y, t2) ->
+      let s = Seq.filter (fun s -> accept (S.bbox s)) (List.to_seq sl) in
+      let bbox1 = {cbbox with Bbox.max_y = y} in
+      let bbox2 = {cbbox with Bbox.min_y = y} in
+      let s1 = if Bbox.overlap bbox bbox1 then aux bbox1 t1 else Seq.empty in
+      let s2 = if Bbox.overlap bbox bbox2 then aux bbox2 t2 else Seq.empty in
+      Seq.append s (Seq.append s1 s2)
+  let (bbox, tree) = t.bbtree in
+  aux bbox tree
 
 let where_to_scan ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
     ?(safe_factor=1.) t bbox k =
-  (* TODO *) []
+  (* TODO *) Seq.empty
 
 end
 

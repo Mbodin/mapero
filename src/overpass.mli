@@ -1,7 +1,7 @@
 
 (* A response is decomposed into two parts: the one already present in the cache,
   and the one that will be ready once we got the full response from the Internet. *)
-type 'a response = 'a * 'a Lwt.t
+type 'a response = 'a * 'a Lwt.t  (* TODO: Do we need it? *)
 
 (* The request API.
   It is parameterised by types to be associated to nodes, ways, and polygons.
@@ -36,7 +36,7 @@ type polygon = {
   repr : R.polygon
 }
 
-(* A list of objects, typically returned in a databse request. *)
+(* A list of objects, typically returned in a database request. *)
 type objects = {
   nodes : node list ;
   ways : way list ;
