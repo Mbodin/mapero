@@ -304,17 +304,19 @@ let rec insert compare e = function
     if compare e1 e < 0 then e1 :: insert compare e l
     else e :: e1 :: l
 
-(* Given a list of rectangles, try to return a slightly different list
-  covering the same area, and following the min and max dimensions. *)
-let fit_to_dimensions maxwidth maxheight minwidth minheight rectangles =
+(* Given a list of rectangles (associated to a notion of knowledge), try to return a
+  slightly different list covering the same area, and following the min and max dimensions.
+  It needs a way to merge knowledge (on too small areas). *)
+let fit_to_dimensions le_k merge_k maxwidth maxheight minwidth minheight rectangles =
   (* First, splitting the larger ones. *)
   let rectangles =
-    List.concat_map (fun rectangle ->
-      Bbox.split rectangle maxwidth maxheight) rectangles in
+    List.concat_map (fun (rectangle, k) ->
+      List.map (fun rect -> (rect, k))
+        (Bbox.split rectangle maxwidth maxheight)) rectangles in
   (* At this point, rectangles are at most maxwidth by maxheight in dimension. *)
   (* Splitting all rectangles on whether their dimensions are fine or not. *)
   let (fine, too_small) =
-    List.partition (fun rectangle ->
+    List.partition (fun (rectangle, _k) ->
       let (width, height) = Bbox.dimensions rectangle in
       width >= minwidth && height >= minheight) rectangles in
   (* What follows is more efficient with in-place replacments. *)
@@ -324,27 +326,30 @@ let fit_to_dimensions maxwidth maxheight minwidth minheight rectangles =
     let (x, y) = Bbox.dimensions rect' in
     x <= maxwidth && y <= maxheight in
   let (_, still_too_small) =
-    (* Merging too small rectangles if possible. *)
-    List.partition (fun rect ->
+    (* Merging too small rectangles if possible.
+      Note that the function has a side effect on the [fine] array. *)
+    List.partition (fun (rect, k) ->
       (* Fetching the closest fine rectangle that can be merged with. *)
       let best = ref (-1) in
-      Array.iteri (fun i rect' ->
+      Array.iteri (fun i (rect', _k') ->
         if can_be_merged rect rect' then (
           if !best = -1 then
             best := i
           else (
-            let rect_best = fine.(!best) in
+            let (rect_best, _k_best) = fine.(!best) in
             if distance rect rect' < distance rect rect_best then
               best := i
           )
         )) fine ;
-      if !best = -1 then false
+      if !best = -1 then
+        (* Returning false adds (rect, k) to the list still_too_small. *)
+        false
       else (
         (* Merging the two rectangles. *)
-        let rect' = fine.(!best) in
+        let (rect', k') = fine.(!best) in
         assert (can_be_merged rect rect') ;
         let rect' = Bbox.outer rect rect' in
-        fine.(!best) <- rect' ;
+        fine.(!best) <- (rect', merge_k k k') ;
         true
       )) too_small in
   let merging_too_small =
@@ -352,55 +357,83 @@ let fit_to_dimensions maxwidth maxheight minwidth minheight rectangles =
       from the fine group, but they might be merged together. *)
     let rec aux = function
       | [] -> []
-      | rect :: l ->
+      | (rect, k) :: l ->
         (* We just fetch any other rectangle in l that we could merge with. *)
         let rec fetch acc = function
           | [] -> (None, [])
-          | rect' :: l ->
-            if can_be_merged rect rect' then (Some rect', acc @ l)
-            else fetch (rect' :: acc) l in
+          | (rect', k') :: l ->
+            if can_be_merged rect rect' then (Some (rect', k'), acc @ l)
+            else fetch ((rect', k') :: acc) l in
         let (o, l) = fetch [] l in
         match o with
         | None ->
           (* This rectangle has to be left unmerged. *)
-          rect :: aux l
-        | Some rect' ->
+          (rect, k) :: aux l
+        | Some (rect', k') ->
           let rect' = Bbox.outer rect rect' in
+          let k' = merge_k k k' in
           let (width, height) = Bbox.dimensions rect' in
           if width >= minwidth && height >= minheight then
             (* We just merge our rectangle into something fine! *)
-            rect' :: aux l
+            (rect', k') :: aux l
           else
             (* We keep looking for potential merges. *)
-            aux (rect' :: l) in
+            aux ((rect', k') :: l) in
     aux still_too_small in
   let merging_too_small =
     (* At this point, there might be rectangles within merging_too_small that overlap and that
       would be useless. *)
-    let order rect1 rect2 = compare (Bbox.dimensions rect1) (Bbox.dimensions rect2) in
-    let merging_too_small =
-      List.sort order merging_too_small in
+    let order (rect1, k1) (rect2, k2) =
+      let c = compare (Bbox.dimensions rect1) (Bbox.dimensions rect2) in
+      if c = 0 then compare k1 k2 else c in
+    let merging_too_small = List.sort order merging_too_small in
     let rec aux = function
       | [] -> []
-      | rect :: l ->
-        if List.exists (Bbox.included rect) l then
+      | (rect, k) :: l ->
+        if List.exists (fun (rect', k') -> Bbox.included rect rect' && le_k k k') l then
           (* This rectangle is actually useless. *)
           aux l
         else
-          match List.find_opt (Bbox.overlap rect) l with
-          | None -> rect :: aux l
-          | Some rect' ->
+          match List.find_opt (fun (rect', _k') -> Bbox.overlap rect rect') l with
+          | None -> (rect, k) :: aux l
+          | Some (rect', k') ->
             if can_be_merged rect rect' then
               (* We found an overlapping bbox that can be merged. *)
               let rect' = Bbox.outer rect rect' in
-              aux (insert order rect' l)
+              let k' = merge_k k k' in
+              aux (insert order (rect', k') l)
             else
               (* Not much to be done there. *)
-              rect :: aux l in
+              (rect, k) :: aux l in
     aux merging_too_small in
   Array.to_list fine @ merging_too_small
 
-let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
+(* From a function computing the missing rectangles and their associated knowledge,
+  a must-box (in which everything has to be filled), and a may-box (which we might
+  want to fill later), compute the list of rectangles and their associated knowledge. *)
+let compute_rectangles le_k merge_k missing box bonus_box =
+  let must_rectangles = missing box in
+  let may_rectangles = missing bonus_box in
+  let rectangles =
+    List.fold_left (fun acc (rect_must, k) ->
+      match List.find_opt (fun (rect_may, _k') ->
+              Bbox.included rect_must rect_may) may_rectangles with
+      | Some (rect, k') -> assert (K.le k k') ; (rect, k') :: acc
+      | None -> assert false
+    ) [] must_rectangles in
+  (* We now have a list of rectangles that fit all the target area.
+    We are just left to make sure that all their dimensions are correct. *)
+  let rectangles =
+    fit_to_dimensions le_k merge_k maxwidth maxheight minwidth minheight rectangles in
+  (* Placing rectangles closer to the center first. *)
+  let rectangles =
+    List.sort_uniq (fun (rect1, _k1) (rect2, _k2) ->
+      let c = compare (distance box rect1) (distance box rect2) in
+      (* In order to avoid removing rectangles at equal distance, we add a comparison. *)
+      if c = 0 then compare rect1 rect2 else c) rectangles in
+  rectangles
+
+let add_to_zone ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
     ?(safe_factor=1.) zone box =
   let bonus_box = Bbox.scale box safe_factor in
   let zone = extend_zone zone bonus_box in
@@ -410,29 +443,20 @@ let add ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=mi
     let (_, missing_t) = extend_zone (zone_of_bbox box) external_box in
     let t = intersection (negation t) missing_t in
     to_bboxes (box, t) in
-  let must_rectangles = missing box in
-  let may_rectangles = missing bonus_box in
   let rectangles =
-    List.fold_left (fun acc rectangle ->
-      match List.find_opt (Bbox.included rectangle) may_rectangles with
-      | Some rect -> rect :: acc
-      | None -> assert false
-    ) [] must_rectangles in
-  let rectangles = List.sort_uniq compare rectangles in
-  (* We now have a list of rectangles that fit all the target area.
-    We are just left to make sure that all their dimensions are correct. *)
-  let rectangles =
-    fit_to_dimensions maxwidth maxheight minwidth minheight rectangles in
-  (* Placing rectangles closer to the center first. *)
-  let rectangles =
-    List.sort (fun rect1 rect2 ->
-      compare (distance box rect1) (distance box rect2)) rectangles in
+    (* The function compute_rectangles assumes a notion of knowledge:
+      we just put a unit type there. *)
+    let missing b = List.map (fun b -> (b, ())) (missing b) in
+    let rectangles =
+      compute_rectangles (fun () () -> true) (fun () () -> ()) missing box bonus_box in
+    (* We then remove the notion of knowledge. *)
+    List.map fst rectangles in
   (* Applying the chosen rectangles to the final box. *)
   let zone = List.fold_left add_bbox zone rectangles in
   ((external_box, simplify (fun () () -> ()) () false zone), rectangles)
 
 
-module Make (K : StructuresSig.Lattice)
+module Make (K : StructuresSig.ExtLattice)
             (S : sig
                 type t
                 val bbox : t -> Bbox.t
@@ -454,17 +478,6 @@ let mix_objects l =
     ) in
   aux 0 (Array.length a - 1)
 
-(* We enrich K with an order relation.
-  This assumes that the equality over K is the usual structural equality [=]. *)
-module K = struct
-    include K
-
-    let le k1 k2 =
-      union k1 k2 = k2
-
-    let ge k1 k2 = le k2 k1
-
-  end
 
 (* Specialised trees adapted to the provided types. *)
 type t_tree = (S.t option, K.t * P.t list) bbtree
@@ -655,7 +668,7 @@ let add_knowledge t kbbox k =
       Vertical ((k', sl), t1, y, t2)
     in
   let (bbox, tree) = extend_t t.bbtree sbbox in
-  let tree = if k = K.bot then tree else aux K.bot bbox tree in
+  let tree = if K.eq k K.bot then tree else aux K.bot bbox tree in
   { t with bbtree = (bbox, tree) }
 
 let get_punctual bbox t =
@@ -698,13 +711,54 @@ let get_spatial bbox ?(partial=false) t =
       let bbox2 = {cbbox with Bbox.min_y = y} in
       let s1 = if Bbox.overlap bbox bbox1 then aux bbox1 t1 else Seq.empty in
       let s2 = if Bbox.overlap bbox bbox2 then aux bbox2 t2 else Seq.empty in
-      Seq.append s (Seq.append s1 s2)
+      Seq.append s (Seq.append s1 s2) in
   let (bbox, tree) = t.bbtree in
   aux bbox tree
 
 let where_to_scan ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
-    ?(safe_factor=1.) t bbox k =
-  (* TODO *) Seq.empty
+    ?(safe_factor=1.) t bbox k_target =
+  let bonus_box = Bbox.scale box safe_factor in
+  let t = extend_t t bonus_box in
+  let (external_box, tree) = t in
+  (* All the rectangles and their associated missing knowledge that would be missing for a
+    given bbox. *)
+  let missing box =
+    let rec aux acc cbbox k = function
+      | Leaf _ -> [(Bbox.intersection bbox cbbox, K.diff k_target k)]
+      | Horizontal ((k, _), t1, x, t2) ->
+        if K.le k_target k then
+          (* We already have all the needed knowledge here. *)
+          acc
+        else
+          let acc =
+            let bbox1 = {cbbox with Bbox.max_x = x} in
+            if Bbox.overlap bbox bbox1 then
+              aux acc bbox1 k t1
+            else acc in
+          let acc =
+            let bbox2 = {cbbox with Bbox.min_x = x} in
+            if Bbox.overlap bbox bbox2 then
+              aux acc bbox2 k t2
+            else acc in
+          acc
+      | Vertical ((k, _), t1, y, t2) ->
+        if K.le k_target k then
+          (* We already have all the needed knowledge here. *)
+          acc
+        else
+          let acc =
+            let bbox1 = {cbbox with Bbox.max_y = y} in
+            if Bbox.overlap bbox bbox1 then
+              aux acc bbox1 k t1
+            else acc in
+          let acc =
+            let bbox2 = {cbbox with Bbox.min_y = y} in
+            if Bbox.overlap bbox bbox2 then
+              aux acc bbox2 k t2
+            else acc in
+          acc in
+    aux [] external_box K.bot tree in
+  compute_rectangles K.le K.union missing box bonus_box
 
 end
 

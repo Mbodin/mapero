@@ -108,9 +108,9 @@ type polygon = {
 }
 
 type objects = {
-  nodes : node list ;
-  ways : way list ;
-  polygons : polygon list ;
+  nodes : node Seq.t ;
+  ways : way Seq.t ;
+  polygons : polygon Seq.t ;
   partial : bool
 }
 
@@ -118,8 +118,11 @@ type objects = {
 (* Modules to build the Zone interface. *)
 
 module Punctual = struct
+
   type t = node
+
   let coordinates n = n.coord
+
 end
 
 module Spatial = struct
@@ -187,7 +190,7 @@ type cache_type = {
   ways : way IMap.t (* The ways. *) ;
   polygons : polygon IMap.t (* The polygons. *) ;*) (* TODO: Do we really need them? *)
   zone : Area.t (* The zone which has already been requested. *) ;
-  future_scans : (Bbox.t * AttrDiff.t * ScanId.t) Seq.t (* Planned scans. *) ;
+  future_scans : (Bbox.t * AttrDiff.t * ScanId.t * Bbox.t) Seq.t (* Planned scans, with the corresponding bbox, knowledge level, scan id, and the overall bbox. *) ;
   lookup : AttrDiff.t (* The current set of attributes that we are interested in. *) ;
   continuations : (objects -> unit) ScanId.Map.t (* Continuations to call when the corresponding scan has been completed. *) ;
   runner : Runner.t (* Some information about the runner. *)
@@ -209,31 +212,6 @@ let set_lookup l =
   cache := { !cache with lookup = AttrDiff.add l }
 
 
-(* Get the first task to be performed, and scans it. *)
-let runner_task () =
-  let%lwt =
-    match Seq.uncons !cache.future_scans with
-    | None -> Lwt.return ()
-    | Some ((bbox, k, id), s) ->
-      cache := { !cache with future_scans = s } ;
-      let request = Request.build bbox (AttrDiff.to_list k) in
-      Lwt.return () (* TODO: Use Get. *) in
-  Lwt.return (not (Seq.is_empty !cache.future_scans))
-
-(* Set a bbox for future scanning.
-  The id is the scan identifier, and k is the knowledge information. *)
-let scan id bbox k =
-  let scans = Area.where_to_scan !cache.zone bbox k in (* TODO: Fill nice values for maxwidth, safe_factor, etc. *)
-  let scans = Seq.map (fun (bbox, k) -> (bbox, k, id)) scans in
-  cache := { !cache with future_scans = Seq.append scans !cache.future_scans } ;
-  cache := { !cache with runner = Runner.add_task !cache.runner runner_task }
-
-(* Remove everything about a scan identifier. *)
-let remove id =
-  cache := { !cache with
-               future_scans = Seq.filter (fun (_bbox, _k, id') -> id <> id') !cache.future_scans ;
-               continuations = ScanId.Map.remove id !cache.continuations }
-
 (* As of get_objects, return all the objects within a given bbox, but without actually
   performing any request. *)
 let get_objects_raw id bbox =
@@ -243,14 +221,61 @@ let get_objects_raw id bbox =
     nodes = Area.get_punctual bbox !cache.zone ;
     ways = List.of_seq ways ;
     polygons = List.of_seq polygons ;
-    partial = Seq.exists (fun (_bbox, _k, id') -> id' = id) !cache.future_scans
+    partial = Seq.exists (fun (_bbox, _k, id', _bbox_englobing) -> id' = id) !cache.future_scans
   }
+
+(* Get the first task to be performed, and scans it. *)
+let runner_task () =
+  let%lwt () =
+    match Seq.uncons !cache.future_scans with
+    | None -> Lwt.return ()
+    | Some ((bbox, k, id, bbox_englobing), s) ->
+      cache := { !cache with future_scans = s } ;
+      let request = Request.build bbox (AttrDiff.to_list k) in
+      let zone =
+        let objects = (* TODO: Use Get. *)
+          {
+            nodes = Seq.empty ;
+            ways = Seq.empty ;
+            polygons = Seq.empty ;
+            partial = false (* It is not partial for the inner bbox. *)
+          } in
+        let zone = Seq.fold_left Area.add_punctual zone objects.nodes in
+        let zone =
+          Seq.fold_left (fun w -> Area.add_spatial (Spatial.Way w)) zone objects.ways in
+        let zone =
+          Seq.fold_left (fun p -> Area.add_spatial (Spatial.Polygon p)) zone objects.polygons in
+        zone in
+      cache := { !cache with zone = zone } ;
+      let () =
+        match ScanId.MapScanId.Map.find_opt id !cache.continuations with
+        | None -> ()
+        | Some f -> f (get_objects_raw id bbox_englobing) in
+      Lwt.return () in
+  Lwt.return (not (Seq.is_empty !cache.future_scans))
+
+(* Set a bbox for future scanning.
+  The id is the scan identifier, and k is the knowledge information. *)
+let scan id bbox k =
+  let scans = Area.where_to_scan !cache.zone bbox k in (* TODO: Fill nice values for maxwidth, safe_factor, etc. *)
+  let scans = List.map (fun (bbox', k) -> (bbox', k, id, bbox)) scans in
+  let scans = List.to_seq scans in
+  cache := { !cache with future_scans = Seq.append scans !cache.future_scans } ;
+  cache := { !cache with runner = Runner.add_task !cache.runner runner_task }
+
+(* Remove everything about a scan identifier. *)
+let remove id =
+  cache := { !cache with
+               future_scans =
+                 Seq.filter (fun (_bbox, _k, id', _bbox_englobing) -> id <> id')
+                 !cache.future_scans ;
+               continuations = ScanId.Map.remove id !cache.continuations }
 
 let get_objects bbox ?(update=fun _ -> ()) =
   let id = ScanId.get () in
   cache := { !cache with continuations = ScanId.Map.add id update } ;
   scan id bbox !cache.lookup ;
-  (get_objects_raw id bbox, fun _ -> remove id)
+  (get_objects_raw id bbox, fun () -> remove id)
 
 end
 

@@ -12,6 +12,8 @@ module IMap2 = Map.Make (Structures.ProductOrderedType (Structures.IntOrder) (St
 type id = int
 type t = id
 
+let eq = (=)
+
 (* The stored sets. *)
 let sets : S.t IMap.t ref = ref IMap.empty
 
@@ -109,6 +111,8 @@ let diff =
       (fun id1 -> id1 (* id1 - [] = id1 *))
       (fun _ -> (* id - id = [] *) 0))
     (fun s1 s2 -> add_set (S.diff s1 s2))
+
+let le id1 id2 = diff id1 id2 = 0
 
 end
 

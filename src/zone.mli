@@ -17,7 +17,7 @@ val empty : zone
   overlap, but small rectangles that are close one with the other will be merged.
   A safe scale can be provided (for example 1.5) to enable the list of bbox returned to cover
   up to safe times the argument bbox in coverage. *)
-val add : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float ->
+val add_to_zone : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float ->
   zone -> Bbox.t -> zone * Bbox.t list
 
 
@@ -78,7 +78,7 @@ val get_spatial : Bbox.t -> ?partial:bool -> t -> S.t Seq.t
   A safe scale can be provided (for example 1.5) to enable the list of bbox returned to cover
   up to safe times the argument bbox in coverage. *)
 val where_to_scan : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?minheight:float -> ?safe_factor:float ->
-  t -> Bbox.t -> K.t -> (Bbox.t * K.t) Seq.t
+  t -> Bbox.t -> K.t -> (Bbox.t * K.t) list
 
 (* To be called from time to time to simplify the internal representation of the data. *)
 val soft_optimise : t -> t

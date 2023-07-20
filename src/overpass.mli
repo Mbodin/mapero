@@ -36,11 +36,11 @@ type polygon = {
   repr : R.polygon
 }
 
-(* A list of objects, typically returned in a database request. *)
+(* A sequence of objects, typically returned in a database request. *)
 type objects = {
-  nodes : node list ;
-  ways : way list ;
-  polygons : polygon list ;
+  nodes : node Seq.t ;
+  ways : way Seq.t ;
+  polygons : polygon Seq.t ;
   partial : bool (* State whether it is a partial response (that is, whether further objects are expected to come afterwards for the same request.) *)
 }
 

@@ -24,3 +24,20 @@ module type Lattice = sig
 
 end
 
+(* A lattice with more information. *)
+module type ExtLattice = sig
+
+  include Lattice
+
+  (* (Partial) order relation. *)
+  val le : t -> t -> bool
+
+  (* Equality test. *)
+  val eq : t -> t -> bool
+
+  (* Compute the smallest value whose union with the second argument is greater
+    than the first argument. *)
+  val diff : t -> t -> t
+
+end
+

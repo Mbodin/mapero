@@ -9,6 +9,10 @@ type id
 (* As the convention goes, we also name it t. *)
 type t = id
 
+(* Equality between two identifiers.
+  It is exactly the usual [=] equality, but we include it as a compatibility to ExtLattice. *)
+val eq : id -> id -> bool
+
 (* Add a list to the store (if not already in it), and return its id. *)
 val add : O.t list -> id
 
@@ -27,8 +31,13 @@ val union : id -> id -> id
 (* Return the intersection of two lists. *)
 val inter : id -> id -> id
 
-(* The difference between two lists. *)
+(* All the elements that are in the first list that are not in the second list,
+  in other words, the difference between two lists. *)
 val diff : id -> id -> id
+
+(* Whether the first list is fully included in the second.
+  In other words, whether its difference is empty. *)
+val le : id -> id -> bool
 
 end
 
