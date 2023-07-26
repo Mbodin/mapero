@@ -19,6 +19,7 @@ let build_bbox bbox =
 
 (* Build the filter associated to a single attribute value. *)
 let build_attribute (key, value) =
+  let open Osm in
   (* Some values are not accepted by Overpass as-is. *)
   let normalise = function
     | Exact "" -> Regexp "^$"
