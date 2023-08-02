@@ -2,12 +2,20 @@
 (* Store to access any part of the canvas. *)
 type t
 
+(* Different drawing modes. *)
+type mode =
+  | SVG (* Create an SVG image onto the webpage. *)
+  | Bitmap (* Create an HTML canvas element onto the webpage. *)
+
+(* Get the current mode. *)
+val get_mode : t -> mode
+
+(* Select the drawing mode *)
+val set_mode : t -> mode -> t
+
 (* Create a canvas in the DOM.
   The provided function will be called whenever its size changes. *)
-val init : (t -> unit) -> t
-
-(* Apply a function to all visible coordinates. *)
-val iter : (int * int -> unit) -> t -> unit
+val init : ?mode:mode -> (t -> unit) -> t
 
 (* Remove all drawing made within the canvas. *)
 val clear : t -> unit

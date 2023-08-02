@@ -5,6 +5,15 @@ open Js_of_ocaml_tyxml
 open Tyxml_js
 
 
+let window = Dom_html.window
+
+let window_x () = window##.innerWidth
+let window_y () = window##.innerHeight
+
+module IMap = Map.Make (Structures.IntOrder)
+
+
+
 (* Size in pixel of a single LEGO cell. *)
 let pixel_stud = 30
 
@@ -18,9 +27,100 @@ let distance_to_user = 200
 let shadow_angle = 135.
 let shadow_distance = Float.of_int pixel_stud /. 4.
 
-(* Some generic DOM functions *)
+(* The style of objects meant to be drawn. *)
+type style = {
+  color : int * int * int (* red, green, blue, between 0 and 255 included. *) ;
+  opacity : float (* Between 0. and 1. *) ;
+  rotation : float (* Angle in degrees. *) ;
+  url : string option (* An optionnal URL to make the object clickable. *)
+  (* TODO: Dealing with filters *)
+}
 
-let window = Dom_html.window
+(* Path descriptor. *)
+type path =
+  | MoveTo of Geometry.real_coordinates (* Move the cursor to this position. *)
+  | LineTo of Geometry.real_coordinates (* Draw a line to that position. *)
+  | ArcTo of Geometry.real_coordinates (* Draw an arc to that position. *)
+            * float (* With this radius *)
+            * bool (* Whether the arc is left of the line.
+                     It corresponds to the sweep-flag attribute of SVG. *)
+            (* Note how ArcTo is much less expressible than in the SVG specification:
+              I restricted what can be done here to fit what I needed to draw. *)
+
+(* The type of objects meant to be drawn. *)
+type dobject =
+  | Rect of Geometry.real_coordinates * Geometry.real_coordinates (* Coordinates of opposite angles *)
+  | Circle of Geometry.real_coordinates (* Center coordinates *)
+            * float (* Radius *)
+  | Polyline of Geometry.real_coordinates list (* All coordinates of the line. *)
+  | Path of path list (* Description of the path *)
+  | Text of Geometry.real_coordinates (* Position *)
+            * string (* Text, Unicode-encoded *)
+  | Image of Geometry.real_coordinates * Geometry.real_coordinates (* Coordinates of opposite angles *)
+
+(* We assume that the canvas is divided into a conceptually infinite number of levels,
+  and that each level level is subdivided into several sublevels. *)
+type sub_level_type =
+  | Objects
+  | Shadows
+  | Lights
+  | PassingThrough
+
+(* We propose several ways to draw in a canvas in this file.
+  Each should respect the following signature. *)
+module type BaseCanvas = sig
+
+  (* Storing where the canvas is on the webpage. *)
+  type t
+
+  (* Create a canvas in the page.
+    The provided function will be called whenever its size changes. *)
+  val init : (t -> unit) -> t
+
+  (* Remove the canvas from the page. *)
+  val close : t -> unit
+
+  (* Clearing the canvas. *)
+  val clear : t -> unit
+
+  (* Drawing the object onto the canvas at the provided level. *)
+  val draw : t -> int -> ?sub_level:sub_level_type -> dobject -> style -> t
+
+end
+
+(* Shared elements between implementations. *)
+
+(* Each levels is divided into four sublevels, each containing a layer. *)
+type 'a sub_levels = {
+  objects : 'a (* The main objects of this level. *) ;
+  shadows : 'a (* Shadows drawn directly on these objects, or any substractive light. *) ;
+  lights : 'a (* Additive lights added directly on these objects. *) ;
+  passing_through : 'a (* Objects with volume that pass through the current level. *)
+}
+
+type 'a store = {
+  interface : 'a (* An element on top of everything else, for the interface. *) ;
+  levels : 'a sub_levels IMap.t ref (* A group for each level. *) ;
+  size : (int * int) ref (* The current size of the whole canvas. *) ;
+  min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
+}
+(* Note that the cell (0, 0) is the center for the perspective, not the minimum cell.
+  The minimum cell has negative coordinates. *)
+(* The level of the top of a stud is 1, a usual LEGO brick without stud is 6, a usual tile is 2. *)
+
+let get_sub_level sub_level = function
+  | Objects -> sub_level.objects
+  | Shadows -> sub_level.shadows
+  | Lights -> sub_level.lights
+  | PassingThrough -> sub_level.passing_through
+
+let get_size canvas = !(canvas.size)
+let get_min_coords canvas = !(canvas.min_coord)
+
+
+(* Implementations of low-level drawing procedures. *)
+
+module SVGCanvas : BaseCanvas = struct
 
 module To_dom = Tyxml_cast.MakeTo (struct
   type 'a elt = 'a Tyxml_js.Svg.elt
@@ -73,54 +173,10 @@ let rec clear_element (n : element) =
     clear_element n
   | None -> ()
 
-
-module IMap = Map.Make (Structures.IntOrder)
-
-(* Each levels is divided into four sublevels, each containing an SVG layer. *)
-type sub_levels = {
-  objects : element (* The main objects of this level. *) ;
-  shadows : element (* Shadows drawn directly on these objects, or any substractive light. *) ;
-  lights : element (* Additive lights added directly on these objects. *) ;
-  passing_through : element (* Objects with volume that pass through the current level. *)
-}
-
-type sub_level_type =
-  | Objects
-  | Shadows
-  | Lights
-  | PassingThrough
-
 type t = {
   svg : element (* The main svg element. *) ;
-  interface : element (* An element on top of everything else, for the interface. *) ;
-  levels : sub_levels IMap.t ref (* A group for each level. *) ;
-  size : (int * int) ref (* The current size of the whole canvas. *) ;
-  min_coord : (int * int) ref (* The coordinate of the minimum currently displayed cell. *)
+  store : element store
 }
-(* Note that the cell (0, 0) is the center for the perspective, not the minimum cell.
-  The minimum cell has negative coordinates. *)
-(* The level of the top of a stud is 1, a usual LEGO brick without stud is 6, a usual tile is 2. *)
-
-
-let get_sub_level sub_level = function
-  | Objects -> sub_level.objects
-  | Shadows -> sub_level.shadows
-  | Lights -> sub_level.lights
-  | PassingThrough -> sub_level.passing_through
-
-
-let get_size canvas = !(canvas.size)
-let get_min_coords canvas = !(canvas.min_coord)
-
-let iter f canvas =
-  let (min_x, min_y) = !(canvas.min_coord) in
-  let (s_x, s_y) = !(canvas.size) in
-  for x = 0 to s_x do
-    for y = 0 to s_y do
-      f (min_x + x, min_y + y)
-    done
-  done
-
 
 let init_svg () : element =
   let id = "map" in
@@ -129,9 +185,9 @@ let init_svg () : element =
       let%svg svg = "<svg width='100%' height='100%' id="id"></svg>" in
       build_append_to Dom_html.document##.body svg)
 
-let window_x, window_y =
-  (fun _ -> window##.innerWidth),
-  (fun _ -> window##.innerHeight)
+(* Remove the svg element from the DOM, invalidating every inner elements. *)
+let close canvas =
+  Dom.removeChild Dom_html.document##.body canvas.svg
 
 let create_sub_levels canvas level =
   let create ?(style="") name =
@@ -142,7 +198,7 @@ let create_sub_levels canvas level =
       else
         let%svg g = "<g id="id" style="style"></g>" in g in
     let g = to_element g in
-    Dom.insertBefore canvas.svg g (Js.Opt.return canvas.interface) ;
+    Dom.insertBefore canvas.svg g (Js.Opt.return canvas.store.interface) ;
     g in
   (* Due to side-effects, the order is important there. *)
   let objects = create "level" in
@@ -170,10 +226,12 @@ let init on_change =
   let%svg interface = "<g id='interface'></g>" in
   let canvas = {
     svg = init_svg () ;
-    interface = to_element interface ;
-    levels = ref IMap.empty ;
-    size = xy ;
-    min_coord = min_coord
+    store = {
+      interface = to_element interface ;
+      levels = ref IMap.empty ;
+      size = xy ;
+      min_coord = min_coord
+    }
   } in
   (* Adding basic styles *)
   append_to canvas.svg
@@ -215,13 +273,13 @@ let init on_change =
       "</defs>" in
      defs) ;
   (* Creating a level 0 *)
-  Dom.appendChild canvas.svg canvas.interface ;
+  Dom.appendChild canvas.svg canvas.store.interface ;
   let sub_level = create_sub_levels canvas 0 in
-  canvas.levels := IMap.add 0 sub_level !(canvas.levels) ;
+  canvas.store.levels := IMap.add 0 sub_level !(canvas.store.levels) ;
   let on_change _ =
     update_xy () ;
-    let (min_coord_x, min_coord_y) = !(canvas.min_coord) in
-    let (size_x, size_y) = !(canvas.size) in
+    let (min_coord_x, min_coord_y) = !(canvas.store.min_coord) in
+    let (size_x, size_y) = !(canvas.store.size) in
     let (shift_coord_x, shift_coord_y) =
       let shift w =
         let m = w mod pixel_stud in
@@ -253,8 +311,7 @@ let clear canvas =
       clear_element sub_level.shadows ;
       clear_element sub_level.lights ;
       clear_element sub_level.passing_through
-    ) !(canvas.levels)
-
+    ) !(canvas.store.levels)
 
 (* Fetch the group corresponding to the given level. *)
 let get_level canvas ?(sub_level=Objects) level =
@@ -273,6 +330,19 @@ let get_level canvas ?(sub_level=Objects) level =
       sub_level in
   let sub_levels = aux level in
   get_sub_level sub_levels sub_level
+
+let draw canvas level ?(sub_level=Objects) dobject style =
+  let level = get_level canvas ~sub_level level in
+  let target =
+    match style.url with
+    | None -> level
+    | Some url ->
+      let%svg a = "<a href="url"></a>" in
+      build_append_to level a in
+  TODO
+
+end
+
 
 (* Get the coordinates on screen of the given coordinate at the given level.
   Because of perspective, they can be shifted. *)
