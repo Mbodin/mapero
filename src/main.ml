@@ -29,7 +29,7 @@ module OSM =
 (* Building an Overpass query, as a function of the current settings. *)
 let overpass_query map_info =
   let styles = Settings.styles in
-  OSM.set_lookup (OSM.settings_to_attributes styles) ;
+  OSM.set_lookup (Overpass.settings_to_attributes styles) ;
   ignore OSM.get_objects (* TODO *) ;
   ()
 

@@ -1,5 +1,5 @@
 
-type 'a response = 'a * 'a Lwt.t
+type 'a response = ('a -> bool -> unit Lwt.t) -> (unit -> unit Lwt.t) Lwt.t
 
 
 (* A module to build Overpass requests. *)
@@ -46,6 +46,8 @@ end
 module Get : sig
     (* TODO *)
   end = struct
+
+module Url = Js_of_ocaml.Url
 
 let build_url request =
   Printf.sprintf "https://overpass-api.de/api/interpreter?data=%s"
@@ -111,8 +113,7 @@ type polygon = {
 type objects = {
   nodes : node Seq.t ;
   ways : way Seq.t ;
-  polygons : polygon Seq.t ;
-  partial : bool
+  polygons : polygon Seq.t
 }
 
 
@@ -193,7 +194,7 @@ type cache_type = {
   zone : Area.t (* The zone which has already been requested. *) ;
   future_scans : (Bbox.t * AttrDiff.t * ScanId.t * Bbox.t) Seq.t (* Planned scans, with the corresponding bbox, knowledge level, scan id, and the overall bbox. *) ;
   lookup : AttrDiff.t (* The current set of attributes that we are interested in. *) ;
-  continuations : (objects -> unit) ScanId.Map.t (* Continuations to call when the corresponding scan has been completed. *) ;
+  continuations : (objects -> bool -> unit Lwt.t) ScanId.Map.t (* Continuations to call when the corresponding scan has been completed. *) ;
   runner : Runner.t (* Some information about the runner. *)
 }
 
@@ -207,22 +208,31 @@ let cache =
     future_scans = Seq.empty ;
     lookup = AttrDiff.bot ;
     continuations = ScanId.Map.empty ;
+    runner = Runner.init
   }
 
 let set_lookup l =
   cache := { !cache with lookup = AttrDiff.add l }
 
 
+(* State whether there are still requests of the provided id. *)
+let still_requests id =
+  Seq.exists (fun (_bbox, _k, id', _bbox_englobing) -> id' = id) !cache.future_scans
+
+(* Same, but for a given bbox. *)
+let still_requests_bbox bbox =
+  Seq.exists (fun (bbox', _k, _id, _bbox_englobing) -> Bbox.overlap bbox bbox') !cache.future_scans
+
 (* As of get_objects, return all the objects within a given bbox, but without actually
   performing any request. *)
-let get_objects_raw id bbox =
+let get_objects_raw bbox =
   let spatial = Area.get_spatial bbox ~partial:true !cache.zone in
   let (ways, polygons) = Spatial.partition spatial in
   {
     nodes = Area.get_punctual bbox !cache.zone ;
-    ways = List.of_seq ways ;
-    polygons = List.of_seq polygons ;
-    partial = Seq.exists (fun (_bbox, _k, id', _bbox_englobing) -> id' = id) !cache.future_scans
+    ways = ways ;
+    polygons = polygons ;
+    (* partial = still_requests_bbox bbox *)
   }
 
 (* Get the first task to be performed, and scans it. *)
@@ -234,25 +244,24 @@ let runner_task () =
       cache := { !cache with future_scans = s } ;
       let request = Request.build bbox (AttrDiff.to_list k) in
       let zone =
-        let objects = (* TODO: Use Get. *)
+        let zone = !cache.zone in
+        let objects =
+          ignore request (* TODO: Use Get. *) ;
           {
             nodes = Seq.empty ;
             ways = Seq.empty ;
-            polygons = Seq.empty ;
-            partial = false (* It is not partial for the inner bbox. *)
+            polygons = Seq.empty
           } in
         let zone = Seq.fold_left Area.add_punctual zone objects.nodes in
         let zone =
-          Seq.fold_left (fun w -> Area.add_spatial (Spatial.Way w)) zone objects.ways in
+          Seq.fold_left (fun zone w -> Area.add_spatial zone (Spatial.Way w)) zone objects.ways in
         let zone =
-          Seq.fold_left (fun p -> Area.add_spatial (Spatial.Polygon p)) zone objects.polygons in
+          Seq.fold_left (fun zone p -> Area.add_spatial zone (Spatial.Polygon p)) zone objects.polygons in
         zone in
       cache := { !cache with zone = zone } ;
-      let () =
-        match ScanId.MapScanId.Map.find_opt id !cache.continuations with
-        | None -> ()
-        | Some f -> f (get_objects_raw id bbox_englobing) in
-      Lwt.return () in
+      match ScanId.Map.find_opt id !cache.continuations with
+      | None -> Lwt.return ()
+      | Some f -> f (get_objects_raw bbox_englobing) (still_requests id) in
   Lwt.return (not (Seq.is_empty !cache.future_scans))
 
 (* Set a bbox for future scanning.
@@ -272,11 +281,12 @@ let remove id =
                  !cache.future_scans ;
                continuations = ScanId.Map.remove id !cache.continuations }
 
-let get_objects bbox ?(update=fun _ -> ()) =
+let get_objects bbox update =
   let id = ScanId.get () in
-  cache := { !cache with continuations = ScanId.Map.add id update } ;
+  cache := { !cache with continuations = ScanId.Map.add id update !cache.continuations } ;
   scan id bbox !cache.lookup ;
-  (get_objects_raw id bbox, fun () -> remove id)
+  let%lwt () = update (get_objects_raw bbox) (still_requests id) in
+  Lwt.return (fun () -> Lwt.return (remove id))
 
 end
 
