@@ -585,7 +585,7 @@ let add_spatial_tree t s =
       else
         let x = fst (Bbox.center bbox) in
         let (p1, p2) = if fst coords > x then (None, Some p) else (Some p, None) in
-        Horizontal ((k, [s]), Leaf None, x, Leaf None)
+        Horizontal ((k, [s]), Leaf p1, x, Leaf p2)
     | Horizontal ((k, sl), t1, x, t2) ->
       let bbox1 = {bbox with Bbox.max_x = x} in
       let bbox2 = {bbox with Bbox.min_x = x} in
@@ -742,7 +742,7 @@ let get_spatial bbox ?(partial=false) t =
 let where_to_scan ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
     ?(safe_factor=1.) t bbox k_target =
   let bonus_bbox = Bbox.scale bbox safe_factor in
-  let t = extend_t t bonus_bbox in
+  let t = extend_t t.bbtree bonus_bbox in
   let (external_box, tree) = t in
   (* All the rectangles and their associated missing knowledge that would be missing for a
     given bbox. *)
@@ -932,8 +932,7 @@ let rebalance (bbox, t) =
   (* The actual rebalancing.
     At each step, we choose horizontal or vertical depending on the dimensions of the bbox. *)
   let rec aux bbox t =
-    let (dimx, dimy) = Bbox.dimensions bbox in
-    if dimx > dimy then
+    if choose_horizontal bbox then
       let (x, t1, t2) = split_horizontal bbox t in
       let bbox1 = {bbox with Bbox.max_x = x} in
       let bbox2 = {bbox with Bbox.min_x = x} in

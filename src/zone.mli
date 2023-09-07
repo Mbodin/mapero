@@ -24,7 +24,7 @@ val add_to_zone : ?maxwidth:float -> ?maxheight:float -> ?minwidth:float -> ?min
 (* The more general interface.
   It is parameterised by the notion of knowledge, which is assumed to be a set of elements of K.t.
   It also takes two notions of objects: spatial objects that are non-punctual, and punctual objects. *)
-module Make (K : StructuresSig.Lattice)
+module Make (K : StructuresSig.ExtLattice)
             (S : sig
                 (* Type of spatial objects *)
                 type t

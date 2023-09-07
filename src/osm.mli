@@ -14,6 +14,9 @@ type estr =
 (* A conjunction of attribute and values that is meant to be searched. *)
 type attributes = (estr (* key *) * estr (* value *)) list
 
+(* An actual attribute of a given object. *)
+type concrete_attributes = (string * string) list
+
 (* A style, defining which objects are to be displayed, and how.
   It is parameterised by the graphical representation associated to each of the three kinds of objects. *)
 type ('n, 'w, 'p) styles_repr = {

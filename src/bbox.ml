@@ -117,3 +117,10 @@ let split b maxwidth maxheight =
       :: split_horizontal {b with min_y = b.min_y +. maxheight}) in
   List.concat_map split_horizontal (split_vertical b)
 
+let to_coordinates b = [
+    (b.min_x, b.min_y) ;
+    (b.max_x, b.min_y) ;
+    (b.max_x, b.max_y) ;
+    (b.min_x, b.max_y)
+  ]
+

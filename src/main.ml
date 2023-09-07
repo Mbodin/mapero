@@ -24,6 +24,32 @@ module OSM =
     type node = Osm.basic_style
     type way = Osm.way_style
     type polygon = Osm.polygon_style
+    (* TODO: The following are dummy implementations for now. *)
+    let to_node _ = Osm.{
+        style = Round ;
+        color = Dot.Coral ;
+        level = 3 ;
+        priority = Structures.High
+      }
+    let to_way _ =
+      Either.Left Osm.{
+          core = {
+            style = Adaptive ;
+            color = Dot.Lavender ;
+            level = 2 ;
+            priority = Structures.Medium
+          } ;
+          non_core = None
+        }
+    let to_polygon _ = Osm.{
+        border = {
+            style = Adaptive ;
+            color = Dot.Bright_green ;
+            level = 1 ;
+            priority = Structures.Low
+          } ;
+        inner = None
+      }
   end)
 
 (* Building an Overpass query, as a function of the current settings. *)

@@ -13,7 +13,8 @@ val settings_to_attributes : Osm.styles -> Osm.attributes list
 
 (* The request API.
   It is parameterised by types to be associated to nodes, ways, and polygons.
-  These types are not manipulated internally: they are returned as-is. *)
+  These types are not manipulated internally: they are returned as-is.
+  Functions converting attributes to the provided representations are also expected. *)
 module Make (R : sig
                    (* The representation (typically, graphical) of the node. *)
                    type node
@@ -23,6 +24,18 @@ module Make (R : sig
 
                    (* The representation for polygon *)
                    type polygon
+
+                   (* Function converting attribute values to these types.
+                     There is a special case for ways, as attributes can reveal that they are
+                     actually polygons in the provided representation.
+                     Indeed, at this point, only multipolygons will be tagged as polygons.
+                     Typically, a closed line with attribute area=yes in OpenStreetMap will
+                     here appear as a line, and we probably expect the to_way function to
+                     convert it into a polygon. *)
+                   val to_node : Osm.concrete_attributes -> node
+                   val to_way : Osm.concrete_attributes -> (way, polygon) Either.t
+                   val to_polygon : Osm.concrete_attributes -> polygon
+
                  end) : sig
 
 (* OSM nodes. *)

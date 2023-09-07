@@ -43,3 +43,6 @@ val outer : t -> t -> t
 (* Split a bbox into several bboxes whose dimensions are less than the provided width and height. *)
 val split : t -> float -> float -> t list
 
+(* Return the four angles of the bbox. *)
+val to_coordinates : t -> Geometry.real_coordinates list
+
