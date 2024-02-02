@@ -56,7 +56,8 @@ type dobject =
   | Path of path list (* Description of the path *)
   | Text of Geometry.real_coordinates (* Position *)
             * string (* Text, Unicode-encoded *)
-  | Image of Geometry.real_coordinates * Geometry.real_coordinates (* Coordinates of opposite angles *)
+  (*TODO: Do we need it?
+  | Image of Geometry.real_coordinates * Geometry.real_coordinates (* Coordinates of opposite angles *) * string (* URL of the external image. *) *)
 
 (* We assume that the canvas is divided into a conceptually infinite number of levels,
   and that each level level is subdivided into several sublevels. *)
@@ -137,6 +138,7 @@ type element_repr = Svg_types.g_content Svg.elt
 (* Converting a Tyxml object to an element.
   Theorically, it is possible to get a non-element node (text, comments, etc.),
   but we won't generate any isolated such nodes in this file. *)
+(* TODO: Remove it, by directly using the To_dom functions *)
 let to_element (repr : element_repr) : element =
   let node = To_dom.of_node repr in
   Js.Opt.get (Dom_svg.CoerceTo.element node) (fun () -> assert false)
@@ -146,6 +148,7 @@ let setAttributes (elem : element) l =
   List.iter (fun (key, value) ->
     elem##setAttribute (Js.string key) value) l
 
+(* TODO: Remove this function. *)
 let mapAttribute (elem : element) attr f =
   let v =
     Js.Opt.get
@@ -174,16 +177,18 @@ let rec clear_element (n : element) =
   | None -> ()
 
 type t = {
-  svg : element (* The main svg element. *) ;
+  svg : element (* The main svg element. *) ; (* TODO: Put the right TyXML type here. *)
   store : element store
 }
 
 let init_svg () : element =
   let id = "map" in
   Js.Opt.get (Dom_svg.document##getElementById (Js.string id)) (fun () ->
-      (* No map found: creating one. *)
-      let%svg svg = "<svg width='100%' height='100%' id="id"></svg>" in
-      build_append_to Dom_html.document##.body svg)
+    (* No map found: creating one. *)
+    let%svg svg = "<svg width='100%' height='100%' id="id"></svg>" in
+    let svg = to_element (*TODO: To_dom.of_svg*) svg in
+    Dom.appendChild Dom_html.document##.body svg ;
+    svg)
 
 (* Remove the svg element from the DOM, invalidating every inner elements. *)
 let close canvas =
@@ -197,7 +202,7 @@ let create_sub_levels canvas level =
         let%svg g = "<g id="id"></g>" in g
       else
         let%svg g = "<g id="id" style="style"></g>" in g in
-    let g = to_element g in
+    let g = to_element (*TODO: To_dom.of_g, but it would be a different To_dom. *) g in
     Dom.insertBefore canvas.svg g (Js.Opt.return canvas.store.interface) ;
     g in
   (* Due to side-effects, the order is important there. *)
@@ -227,14 +232,14 @@ let init on_change =
   let canvas = {
     svg = init_svg () ;
     store = {
-      interface = to_element interface ;
+      interface = to_element (*TODO: To_dom.of_g *) interface ;
       levels = ref IMap.empty ;
       size = xy ;
       min_coord = min_coord
     }
   } in
   (* Adding basic styles *)
-  append_to canvas.svg
+  Dom.appendChild canvas.svg
     (let%svg style =
        "<style>"
         "* { transform-origin: center; transform-box: fill-box; }"
@@ -243,7 +248,7 @@ let init on_change =
           "text-anchor: middle; dominant-baseline: central;"
         "}"
         "</style>" in
-     style) ;
+     To_dom.of_style style) ;
   (* Adding some filters *)
   append_to canvas.svg
     (let%svg defs =
@@ -318,7 +323,7 @@ let get_level canvas ?(sub_level=Objects) level =
   assert (level >= 0) ;
   let rec aux level =
     assert (level >= 0) ;
-    match IMap.find_opt level !(canvas.levels) with
+    match IMap.find_opt level !(canvas.store.levels) with
     | Some sub_level -> sub_level
     | None ->
       (* Creating all previous levels and adding them before the current level. *)
@@ -326,10 +331,45 @@ let get_level canvas ?(sub_level=Objects) level =
       (* Adding the current level. *)
       let sub_level =
         create_sub_levels canvas level in
-      canvas.levels := IMap.add level sub_level !(canvas.levels) ;
+      canvas.store.levels := IMap.add level sub_level !(canvas.store.levels) ;
       sub_level in
   let sub_levels = aux level in
   get_sub_level sub_levels sub_level
+
+(* Convert a path descriptor into SVG's d field for path. *)
+let path_to_d p =
+  let step = function
+    | MoveTo (x, y) -> Printf.sprintf "M %g,%g" x y
+    | LineTo (x, y) -> Printf.sprintf "L %g,%g" x y
+    | ArcTo ((x, y), r, d) -> Printf.sprintf "A %g,%g 0 0 %d %g,%g" r r (if d then 0 else 1) x y in
+  String.concat " " (List.map step p)
+
+(* Create a TyXML object from a dobject. *)
+let convert_dobject =
+  let to_measure x = (x, None) in function
+  | Rect ((x1, y1), (x2, y2)) ->
+    let x = min x1 x2 in
+    let y = min y1 y2 in
+    let%svg r =
+      "<rect x = "(to_measure x)" y = "(to_measure y)"
+        width = "(to_measure (max x1 x2 -. x))" height = "(to_measure (max y1 y2 -. y))" />" in
+    r
+  | Circle ((cx, cy), r) ->
+    let%svg c =
+      "<circle cx = "(to_measure cx)" cy = "(to_measure cy)" r = "(to_measure r)" />" in
+    c
+  | Polyline l ->
+    let%svg p =
+      "<polyline points = "l" />" in
+    p
+  | Path p ->
+    let%svg p =
+      "<path d = "(path_to_d p)" />" in
+    p
+  | Text ((x, y), txt) ->
+    let%svg t =
+      "<text x = "[to_measure x]" y = "[to_measure y]">"[Svg.txt txt]"</text>" in
+    t
 
 let draw canvas level ?(sub_level=Objects) dobject style =
   let level = get_level canvas ~sub_level level in
@@ -338,10 +378,29 @@ let draw canvas level ?(sub_level=Objects) dobject style =
     | None -> level
     | Some url ->
       let%svg a = "<a href="url"></a>" in
-      build_append_to level a in
-  TODO
+      let a = to_element (*To_dom.of_a*) a in
+      Dom.appendChild level a ;
+      a in
+  let rotation = style.rotation in
+  let style =
+    let fill =
+      let (r, g, b) = style.color in
+      Printf.sprintf "fill:rgb(%d,%d,%d);" r g b in
+    let opacity =
+      if style.opacity = 1. then ""
+      else Printf.sprintf "opacity:%g;" style.opacity in
+    String.concat "" [fill; opacity] in
+  let o = to_element (convert_dobject dobject) in
+  if rotation <> 0. then
+    o##setAttribute (Js.string "transform") (Js.string (Printf.sprintf "rotate(%g)" rotation)) ;
+  if style <> "" then
+    o##setAttribute (Js.string "style") (Js.string style) ;
+  Dom.appendChild target o ;
+  canvas
 
 end
+
+(* TODO: Continue from here. *)
 
 
 (* Get the coordinates on screen of the given coordinate at the given level.
@@ -468,7 +527,9 @@ let draw_figure canvas (x, y) level ?(sub_level=Objects) ?(size=(1, 1))
     if url = "" then level
     else (
       let%svg a = "<a href="url"></a>" in
-      build_append_to level a
+      let a = To_dom.of_a a in
+      Dom.appendChild level a ;
+      a
     ) in
   List.iter (append_to target) l ;
   List.iter accumulator l ;
@@ -679,7 +740,7 @@ let draw_shadow canvas (x, y) level ?(height=1) ?(sub_level=Shadows) ?(color=Dot
     "<g style='filter:url(#blur_shadow);'>"
       "<polyline style="style" points="points" />"
     "</g>" in
-  let g = to_element g in
+  let g = To_dom.of_g g in
   let level = get_level canvas ~sub_level level in
   Dom.appendChild level g ;
   fun (elem : element_repr) -> (

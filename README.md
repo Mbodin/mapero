@@ -19,11 +19,28 @@ npm install esy
 esy
 ```
 
+Then, to access it on a webbrowser, type:
+```bash
+# Run a local server on port 8000.
+esy server > /dev/null &
+# Then open the browser.
+firefox localhost:8000 &
+```
+
 ## Using `opam`
 
+This project has been tested on the versions stated on `package.json` (the file read by `esy`), and there might be some incompatibilities with the latest Opam versions of packages.
 ```bash
 opam install dune lwt_ppx js_of_ocaml js_of_ocaml-ppx js_of_ocaml-lwt tyxml tyxml-ppx js_of_ocaml-tyxml
 dune build
+```
+
+Then, to access it on a web-browser, type:
+```bash
+# Run a local server on post 8000.
+./server.sh
+# Then open the browser.
+firefox localhost:8000 &
 ```
 
 # Sources
