@@ -14,17 +14,29 @@
 		"server": "./server.sh"
 	},
 	"dependencies": {
-		"@opam/dune": ">=2.7",
+		"@opam/dune": "~3.11",
 		"@opam/ocamlfind": "1.9.5",
 		"@opam/lwt_ppx": "*",
-		"@opam/js_of_ocaml": "~4.1",
+		"@opam/js_of_ocaml": "~5.4",
 		"@opam/js_of_ocaml-lwt": "*",
 		"@opam/js_of_ocaml-ppx": "*",
 		"@opam/js_of_ocaml-ppx_deriving_json": "*",
 		"@opam/tyxml": "*",
 		"@opam/tyxml-ppx": "*",
 		"@opam/js_of_ocaml-tyxml": "*",
-		"ocaml": "~4.14"
+		"ocaml": "~5.1"
+	},
+	"resolutions": {
+		"@opam/tyxml-ppx": {
+			"source": "github:ocsigen/tyxml:tyxml-ppx.opam#06b5c2afb4318eaea813151b2a0047212a0c277f",
+			"override": {
+				"dependencies": {
+					"@opam/tyxml": "*",
+					"@opam/tyxml-syntax": "github:mbodin/tyxml:tyxml-syntax.opam#25cdd2772e0be4e89c0d0eecd9a59c3c13b7bacc",
+					"@opam/markup": "github:aantron/markup.ml#d77da228ed8915b6f11fbea00c269cfd5fd9e84a"
+				}
+			}
+		}
 	}
 }
 
