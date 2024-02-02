@@ -28,7 +28,13 @@ type style =
 
 
 (* The levels taken as argument below are priority levels, and not physical levels
-  (in contrary to the convention in the Canvas module. *)
+  (in contrary to the convention in the Canvas module).
+  Higher levels will be prioritised.
+  There is also a priority argument (of type Structures.priority): this one takes precedence.
+  Thus, if provided two values, one at level 10 and low priority and the other one at level 1
+  (a low priority level) and high priority, then the second one will be prefered.
+  If both have the same level and same priority, the respective values will be merged.
+  (In particular, it is better to ensure that at a given level, all colors are the same.) *)
 
 (* Add a single dot to the map, given its coordinates. *)
 val add_PoI : t -> real_coordinates -> ?priority:Structures.priority -> ?level:int -> ?style:style -> Dot.color -> t

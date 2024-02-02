@@ -111,14 +111,14 @@ let rec union t = function
     Vertical ((), t1, y, t2)
 
 (* Split a list in two at the given index. *)
-let split_list =
+let split_list i l =
   let rec aux acc i = function
     | l when i = 0 -> (List.rev acc, l)
     | x :: l -> aux (x :: acc) (i - 1) l
     | [] ->
       assert (i > 0) ;
       assert false in
-  aux []
+  aux [] i l
 
 (* A (costly) function to simplify bounded trees.
   Information at nodes may be applied to a larger area, loosing some information.
@@ -140,8 +140,7 @@ let simplify merge_node neutral_node neutral_leaf (bbox, t) =
       else
         let s' = s / 2 in
         let (l1, l2) = split_list s' l in
-        constr (aux s' l1) (aux (s - s') l2)
-      in
+        constr (aux s' l1) (aux (s - s') l2) in
     snd (aux (List.length l) l) in
   (* CHeck whether two trees are identical, ignoring the local node data. *)
   let compare_trees t1 t2 =
@@ -221,7 +220,7 @@ let simplify merge_node neutral_node neutral_leaf (bbox, t) =
       make_tree (fun (y1, t1) (y2, t2) ->
         (y1, Vertical (neutral_node, t1, y2, t2))) l in
     add_data ~mode:true data t in
-  optimise_horizontal bbox t
+  (bbox, optimise_horizontal bbox t)
 
 (* The simplify function can make node information less precise.
   This function aims at counter-balacing this effect.
@@ -422,8 +421,10 @@ let fit_to_dimensions le_k merge_k maxwidth maxheight minwidth minheight rectang
 
 (* From a function computing the missing rectangles and their associated knowledge,
   a must-box (in which everything has to be filled), and a may-box (which we might
-  want to fill later), compute the list of rectangles and their associated knowledge. *)
-let compute_rectangles le_k merge_k missing box bonus_box =
+  want to fill later), compute the list of rectangles and their associated knowledge.
+  We assume that the function fit_to_dimensions has been specialised to the context,
+  and now only expects the raw rectangles. *)
+let compute_rectangles le_k fit_to_dimensions missing box bonus_box =
   let must_rectangles = missing box in
   let may_rectangles = missing bonus_box in
   let rectangles =
@@ -435,8 +436,7 @@ let compute_rectangles le_k merge_k missing box bonus_box =
     ) [] must_rectangles in
   (* We now have a list of rectangles that fit all the target area.
     We are just left to make sure that all their dimensions are correct. *)
-  let rectangles =
-    fit_to_dimensions le_k merge_k maxwidth maxheight minwidth minheight rectangles in
+  let rectangles = fit_to_dimensions rectangles in
   (* Placing rectangles closer to the center first. *)
   let rectangles =
     List.sort_uniq (fun (rect1, _k1) (rect2, _k2) ->
@@ -460,12 +460,16 @@ let add_to_zone ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minh
       we just put a unit type there. *)
     let missing b = List.map (fun b -> (b, ())) (missing b) in
     let rectangles =
-      compute_rectangles (fun () () -> true) (fun () () -> ()) missing box bonus_box in
+      let le_k () () = true in
+      let merge_k () () = () in
+      compute_rectangles le_k
+        (fit_to_dimensions le_k merge_k maxwidth maxheight minwidth minheight)
+        missing box bonus_box in
     (* We then remove the notion of knowledge. *)
     List.map fst rectangles in
   (* Applying the chosen rectangles to the final box. *)
   let zone = List.fold_left add_bbox zone rectangles in
-  ((external_box, simplify (fun () () -> ()) () false zone), rectangles)
+  ((external_box, snd (simplify (fun () () -> ()) () false zone)), rectangles)
 
 
 module Make (K : StructuresSig.ExtLattice)
@@ -492,7 +496,7 @@ let mix_objects l =
 
 
 (* Specialised trees adapted to the provided types. *)
-type t_tree = (S.t option, K.t * P.t list) bbtree
+type t_tree = (K.t * S.t list, P.t option) bbtree
 
 type t = {
   bbtree : t_tree ;
@@ -506,14 +510,23 @@ let base_time_before_rebalancing = 100
 
 let empty = {
   bbtree = (default_bbox, Leaf None) ;
-  time_before_optimisation = base_time_before_optimisation
+  time_before_optimisation = base_time_before_optimisation ;
   time_before_rebalancing = base_time_before_rebalancing
 }
 
-(* A specialised version of extend for t_tree. *)
-let extend_t : t_tree -> Bbox.t -> t_tree = extend (K.bot, []) None
+(* Operations about node data information within t_tree. *)
+let merge_node (k1, l1) (k2, l2) =
+  (K.union k1 k2, l1 @ l2)
+let neutral_leaf = None
+let neutral_node = (K.bot, [])
+let is_in_bbox bbox (s : S.t) =
+  Bbox.included (S.bbox s) bbox
 
-let add_punctual t p =
+(* A specialised version of extend for t_tree. *)
+let extend_t : t_tree -> Bbox.t -> t_tree = extend neutral_node None
+
+(* Add a punctual object to a raw tree. *)
+let add_punctual_tree t p =
   let coords = P.coordinates p in
   let rec aux bbox = function
     | Leaf None ->
@@ -526,11 +539,11 @@ let add_punctual t p =
       let dist proj = Float.abs (proj coords -. proj coords') in
       let average x1 x2 = (x1 +. x2) /. 2. in
       if dist fst > dist snd then
-        let (p1, p2) = if fst p > fst p' then (p', p) else (p, p') in
-        Vertical (neutral_node, Leaf (Some p1), average (fst p1) (fst p2), Leaf (Some p2))
+        let (p1, p2) = if fst coords > fst coords' then (p', p) else (p, p') in
+        Vertical (neutral_node, Leaf (Some p1), average (fst coords) (fst coords'), Leaf (Some p2))
       else
-        let (p1, p2) = if snd p > snd p' then (p', p) else (p, p') in
-        Horizontal (neutral_node, Leaf (Some p1), average (snd p1) (snd p2), Leaf (Some p2))
+        let (p1, p2) = if snd coords > snd coords' then (p', p) else (p, p') in
+        Horizontal (neutral_node, Leaf (Some p1), average (snd coords) (snd coords'), Leaf (Some p2))
     | Horizontal (kl, t1, x, t2) ->
       if fst coords > x then
         Horizontal (kl, t1, x, aux {bbox with Bbox.min_x = x} t2)
@@ -541,11 +554,15 @@ let add_punctual t p =
         Vertical (kl, t1, y, aux {bbox with Bbox.min_y = y} t2)
       else
         Vertical (kl, aux {bbox with Bbox.max_y = y} t1, y, t2) in
-  let (bbox, tree) = extend_t t.bbtree (Bbox.singleton coords) in
+  let (bbox, tree) = extend_t t (Bbox.singleton coords) in
   let tree = aux bbox tree in
-  { t with bbtree = (bbox, tree) }
+  (bbox, tree)
 
-let add_spatial t s =
+let add_punctual t p =
+  { t with bbtree = add_punctual_tree t.bbtree p }
+
+(* Add a spatial object to a raw tree. *)
+let add_spatial_tree t s =
   let sbbox = S.bbox s in
   (* We add the spatial object in the node best suited for it, without adding any node. *)
   let rec aux k bbox = function
@@ -563,12 +580,12 @@ let add_spatial t s =
       let dist proj = Float.abs (proj coords -. proj (Bbox.center bbox)) in
       if dist fst > dist snd then
         let y = snd (Bbox.center bbox) in
-        let (p1, p2) = if snd proj > y then (None, Some p) else (Some p, None) in
+        let (p1, p2) = if snd coords > y then (None, Some p) else (Some p, None) in
         Vertical ((k, [s]), Leaf p1, y, Leaf p2)
       else
         let x = fst (Bbox.center bbox) in
-        let (p1, p2) = if fst proj > x then (None, Some p) else (Some p, None) in
-        Horizontal ((k, [s]), Leaf None, x, Leaf None)
+        let (p1, p2) = if fst coords > x then (None, Some p) else (Some p, None) in
+        Horizontal ((k, [s]), Leaf p1, x, Leaf p2)
     | Horizontal ((k, sl), t1, x, t2) ->
       let bbox1 = {bbox with Bbox.max_x = x} in
       let bbox2 = {bbox with Bbox.min_x = x} in
@@ -591,11 +608,15 @@ let add_spatial t s =
         assert (Bbox.included sbbox bbox) ;
         Vertical ((k, s :: sl), t1, y, t2)
       ) in
-  let (bbox, tree) = extend_t t.bbtree sbbox in
+  let (bbox, tree) = extend_t t sbbox in
   let tree = aux K.bot bbox tree in
-  { t with bbtree = (bbox, tree) }
+  (bbox, tree)
 
-let add_knowledge t kbbox k =
+let add_spatial t s =
+  { t with bbtree = add_spatial_tree t.bbtree s }
+
+(* State that we now know a bbox up to a given level of knowledge in a raw tree. *)
+let add_knowledge_tree t kbbox k =
   (* In contrary to add_spatial, we want to store the information as precisely as possible here:
     we need to add nodes one the way. *)
   let rec aux k' bbox = function
@@ -646,30 +667,33 @@ let add_knowledge t kbbox k =
       let t1 =
         let bbox1 = {bbox with Bbox.max_x = x} in
         if Bbox.overlap bbox1 kbbox then
-          aux bbox1 t1
+          aux k' bbox1 t1
         else t1 in
       let t2 =
         let bbox2 = {bbox with Bbox.min_x = x} in
         if Bbox.overlap bbox2 kbbox then
-          aux bbox2 t2
+          aux k' bbox2 t2
         else t2 in
       Horizontal ((k', sl), t1, x, t2)
     | Vertical ((k', sl), t1, y, t2) ->
       let t1 =
         let bbox1 = {bbox with Bbox.max_y = y} in
         if Bbox.overlap bbox1 kbbox then
-          aux bbox1 t1
+          aux k' bbox1 t1
         else t1 in
       let t2 =
         let bbox2 = {bbox with Bbox.min_y = y} in
         if Bbox.overlap bbox2 kbbox then
-          aux bbox2 t2
+          aux k' bbox2 t2
         else t2 in
       Vertical ((k', sl), t1, y, t2)
     in
-  let (bbox, tree) = extend_t t.bbtree sbbox in
+  let (bbox, tree) = extend_t t kbbox in
   let tree = if K.eq k K.bot then tree else aux K.bot bbox tree in
-  { t with bbtree = (bbox, tree) }
+  (bbox, tree)
+
+let add_knowledge t kbbox k =
+  { t with bbtree = add_knowledge_tree t.bbtree kbbox k }
 
 let get_punctual bbox t =
   let rec aux cbbox = function
@@ -705,7 +729,7 @@ let get_spatial bbox ?(partial=false) t =
       let s1 = if Bbox.overlap bbox bbox1 then aux bbox1 t1 else Seq.empty in
       let s2 = if Bbox.overlap bbox bbox2 then aux bbox2 t2 else Seq.empty in
       Seq.append s (Seq.append s1 s2)
-    | Vertical (_, t1, y, t2) ->
+    | Vertical ((_k, sl), t1, y, t2) ->
       let s = Seq.filter (fun s -> accept (S.bbox s)) (List.to_seq sl) in
       let bbox1 = {cbbox with Bbox.max_y = y} in
       let bbox2 = {cbbox with Bbox.min_y = y} in
@@ -717,8 +741,8 @@ let get_spatial bbox ?(partial=false) t =
 
 let where_to_scan ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(minheight=minwidth)
     ?(safe_factor=1.) t bbox k_target =
-  let bonus_box = Bbox.scale box safe_factor in
-  let t = extend_t t bonus_box in
+  let bonus_bbox = Bbox.scale bbox safe_factor in
+  let t = extend_t t.bbtree bonus_bbox in
   let (external_box, tree) = t in
   (* All the rectangles and their associated missing knowledge that would be missing for a
     given bbox. *)
@@ -758,15 +782,9 @@ let where_to_scan ?(maxwidth=infinity) ?(maxheight=maxwidth) ?(minwidth=0.) ?(mi
             else acc in
           acc in
     aux [] external_box K.bot tree in
-  compute_rectangles K.le K.union missing box bonus_box
-
-(* Operations about node data information. *)
-let merge_node (k1, l1) (k2, l2) =
-  (K.join k1 k2, l1 @ l2)
-let neutral_leaf = None
-let neutral_node = (K.bot, [])
-let is_in_bbox bbox (s : S.t) =
-  Bbox.included (S.bbox s) bbox
+  compute_rectangles K.le
+    (fit_to_dimensions K.le K.union maxwidth maxheight minwidth minheight)
+    missing bbox bonus_bbox
 
 (* Rebalance the whole tree to optimise it, in a very costly manner. *)
 let rebalance (bbox, t) =
@@ -789,8 +807,8 @@ let rebalance (bbox, t) =
         let knowledge = Seq.cons (k, bbox) (Seq.append knowledge1 knowledge2) in
         (c, Horizontal (c, t1, x, t2), spatial, knowledge)
       | Vertical ((k, sl), t1, y, t2) ->
-        let (c1, t1) = aux {bbox with Bbox.max_y = y} t1 in
-        let (c2, t2) = aux {bbox with Bbox.min_y = y} t2 in
+        let (c1, t1, spatial1, knowledge1) = aux {bbox with Bbox.max_y = y} t1 in
+        let (c2, t2, spatial2, knowledge2) = aux {bbox with Bbox.min_y = y} t2 in
         let c = c1 + c2 in
         let spatial = Seq.append (List.to_seq sl) (Seq.append spatial1 spatial2) in
         let knowledge = Seq.cons (k, bbox) (Seq.append knowledge1 knowledge2) in
@@ -809,29 +827,29 @@ let rebalance (bbox, t) =
     | Horizontal (_c, Leaf (c0, None), _x, t)
     | Horizontal (_c, t, _x, Leaf (c0, None)) ->
       assert (c0 = 0) ;
-      t2
+      t
     | Vertical (_c, Leaf (c0, None), _y, t)
     | Vertical (_c, t, _y, Leaf (c0, None)) ->
       assert (c0 = 0) ;
-      t2
+      t
     | t -> t in
   (* Redefinition of the restricting functions fitted to these kinds of trees. *)
   let restrict_before_x x0 =
     restrict_gen
       (fun _c t1 x t2 -> if x >= x0 then t1 else Horizontal (get_double_count t1 t2, t1, x, t2))
-      (fun _c t1 y t2 -> Vertical (get_double_count t1 t2, t1, y, t2))
+      (fun _c t1 y t2 -> Vertical (get_double_count t1 t2, t1, y, t2)) in
   let restrict_after_x x0 =
     restrict_gen
       (fun _c t1 x t2 -> if x < x0 then t1 else Horizontal (get_double_count t1 t2, t1, x, t2))
-      (fun _c t1 y t2 -> Vertical (get_double_count t1 t2, t1, y, t2))
+      (fun _c t1 y t2 -> Vertical (get_double_count t1 t2, t1, y, t2)) in
   let restrict_before_y y0 =
     restrict_gen
       (fun _c t1 x t2 -> Horizontal (get_double_count t1 t2, t1, x, t2))
-      (fun _c t1 y t2 -> if y >= y0 then t1 else Vertical (get_double_count t1 t2, t1, y, t2))
+      (fun _c t1 y t2 -> if y >= y0 then t1 else Vertical (get_double_count t1 t2, t1, y, t2)) in
   let restrict_after_y y0 =
     restrict_gen
       (fun _c t1 x t2 -> Horizontal (get_double_count t1 t2, t1, x, t2))
-      (fun _c t1 y t2 -> if y < y0 then t1 else Vertical (get_double_count t1 t2, t1, y, t2))
+      (fun _c t1 y t2 -> if y < y0 then t1 else Vertical (get_double_count t1 t2, t1, y, t2)) in
   (* Find the best-suited horizontal split by looking at the proportion of points.
     Return the horizontal division coordinate, as well as the two left and right subtrees. *)
   let split_horizontal bbox t =
@@ -914,8 +932,7 @@ let rebalance (bbox, t) =
   (* The actual rebalancing.
     At each step, we choose horizontal or vertical depending on the dimensions of the bbox. *)
   let rec aux bbox t =
-    let (dimx, dimy) = Bbox.dimensions bbox in
-    if dimx > dimy then
+    if choose_horizontal bbox then
       let (x, t1, t2) = split_horizontal bbox t in
       let bbox1 = {bbox with Bbox.max_x = x} in
       let bbox2 = {bbox with Bbox.min_x = x} in
@@ -933,8 +950,10 @@ let rebalance (bbox, t) =
   (* Removing the number of nodes as information. *)
   let t = map (fun _c -> (K.bot, [])) (fun (_c, o) -> o) t in
   (* Reestablishing the spatial information. *)
-  let t = Seq.fold_left (fun t (k, bbox) -> add_knowledge t bbox k) t knowledge in
-  let t = Seq.fold_left add_spatial t spatial in
+  let (bbox, t) =
+    Seq.fold_left (fun t (k, bbox) -> add_knowledge_tree t bbox k) (bbox, t) knowledge in
+  let (bbox, t) =
+    Seq.fold_left add_spatial_tree (bbox, t) spatial in
   (bbox, t)
 
 (* Only optimise when the associated counter reaches 0. *)
@@ -948,11 +967,13 @@ let soft_optimise t =
       time_before_rebalancing = t.time_before_rebalancing - 1 ;
   } in
   if t.time_before_optimisation <= 0 then {
-    bbtree = specialise is_in_bbox (simplify merge_node neutral_node neutral_leaf t.bbtree) ;
-    time_before_optimisation = base_time_before_optimisation
+    t with
+      bbtree = specialise is_in_bbox (simplify merge_node neutral_node neutral_leaf t.bbtree) ;
+      time_before_optimisation = base_time_before_optimisation
   } else if t.time_before_rebalancing <= 0 then {
-    bbtree = rebalance t.bbtree ;
-    time_before_rebalancing = base_time_before_rebalancing
+    t with
+      bbtree = rebalance t.bbtree ;
+      time_before_rebalancing = base_time_before_rebalancing
   } else t
 
 end

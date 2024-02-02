@@ -1,5 +1,90 @@
 
-type 'a response = 'a * 'a Lwt.t
+type 'a response = ('a -> bool -> unit Lwt.t) -> (unit -> unit Lwt.t) Lwt.t
+
+
+(* Representation of the node, ways, and polygon. *)
+module Repr (R : sig
+                   type node
+                   type way
+                   type polygon
+                 end) = struct
+
+type node = {
+  coord : Geometry.real_coordinates ;
+  repr : R.node
+}
+
+type way = {
+  nodes : Geometry.real_coordinates list ;
+  repr : R.way
+}
+
+type polygon = {
+  nodes : Geometry.real_coordinates list ;
+  repr : R.polygon
+}
+
+type objects = {
+  nodes : node Seq.t ;
+  ways : way Seq.t ;
+  polygons : polygon Seq.t
+}
+
+end
+
+(* Convert a representation to another one. *)
+module MapRepr (R1 : sig
+                   type node
+                   type way
+                   type polygon
+                 end)
+               (R2 : sig
+                   type node
+                   type way
+                   type polygon
+                   val to_node : R1.node -> node
+                   val to_way : R1.way -> (way, polygon) Either.t
+                   val to_polygon : R1.polygon -> polygon
+                 end) = struct
+
+module Repr1 = Repr(R1)
+module Repr2 = Repr(R2)
+
+(* Map a Repr1.node to a Repr2.node. *)
+let map_node (n : Repr1.node) = {
+    Repr2.coord = n.Repr1.coord ;
+    Repr2.repr = R2.to_node n.Repr1.repr
+  }
+
+(* Map a Repr1.way to either a Repr2.way or a Repr2.polygon depending on the result of R2.to_way. *)
+let map_way (w : Repr1.way) =
+  match R2.to_way w.Repr1.repr with
+  | Either.Left w' ->
+    Either.Left ({
+        Repr2.nodes = w.Repr1.nodes ;
+        Repr2.repr = w'
+      } : Repr2.way)
+  | Either.Right p ->
+    Either.Right {
+        Repr2.nodes = w.Repr1.nodes ;
+        Repr2.repr = p
+      }
+
+(* Map a Repr1.polygon to a Repr2.polygon. *)
+let map_polygon (p : Repr1.polygon) = {
+    Repr2.nodes = p.Repr1.nodes ;
+    Repr2.repr = R2.to_polygon p.Repr1.repr
+  }
+
+(* Map a Repr1.objects to a Repr2.objects. *)
+let map_objects o =
+  let (ww, wp) = Seq.partition_map map_way o.Repr1.ways in {
+    Repr2.nodes = Seq.map map_node o.Repr1.nodes ;
+    Repr2.ways = ww ;
+    Repr2.polygons = Seq.append wp (Seq.map map_polygon o.Repr1.polygons)
+  }
+
+end
 
 
 (* A module to build Overpass requests. *)
@@ -42,17 +127,31 @@ let build bbox attrs =
 
 end
 
+(* When dealing with overpass, we get all the raw list of attribute/value of all objects. *)
+module RawAttr = struct
+  type node = Osm.concrete_attributes
+  type way = Osm.concrete_attributes
+  type polygon = Osm.concrete_attributes
+end
+
+(* Representation of objects provided by Overpass. *)
+module RawRepr = Repr(RawAttr)
+
 (* A module to perform an Overpass request. *)
 module Get : sig
-    (* TODO *)
+
+    val get : Bbox.t -> Osm.attributes list -> RawRepr.objects
+
   end = struct
+
+module Url = Js_of_ocaml.Url
 
 let build_url request =
   Printf.sprintf "https://overpass-api.de/api/interpreter?data=%s"
     (Url.urlencode request)
 
 (* TODO:
-let _ request =
+let fetch request =
   match Url.url_of_string (build_url request) with
   | None -> assert false
   | Some url -> ??
@@ -60,6 +159,24 @@ let _ request =
   let%lwt json = XmlHttpRequest.get (build_url request) in
   ??
 *)
+
+let get bbox l =
+  let request = Request.build bbox l in
+  ignore request (* TODO: fetch request *) ;
+  (* Temporarily, we just return a dummy result used for debugging. *)
+  let center = RawRepr.{
+      coord = Bbox.center bbox ;
+      repr = []
+    } in
+  let outline : RawRepr.way = RawRepr.{
+      nodes = Bbox.to_coordinates bbox ;
+      repr = []
+    } in
+  RawRepr.{
+    nodes = Seq.return center ;
+    ways = Seq.return outline ;
+    polygons = Seq.empty
+  }
 
 end
 
@@ -91,29 +208,12 @@ module Make (R : sig
                    type node
                    type way
                    type polygon
+                   val to_node : Osm.concrete_attributes -> node
+                   val to_way : Osm.concrete_attributes -> (way, polygon) Either.t
+                   val to_polygon : Osm.concrete_attributes -> polygon
                  end) = struct
 
-type node = {
-  coord : Geometry.real_coordinates ;
-  repr : R.node
-}
-
-type way = {
-  nodes : Geometry.real_coordinates list ;
-  repr : R.way
-}
-
-type polygon = {
-  nodes : Geometry.real_coordinates list ;
-  repr : R.polygon
-}
-
-type objects = {
-  nodes : node Seq.t ;
-  ways : way Seq.t ;
-  polygons : polygon Seq.t ;
-  partial : bool
-}
+include Repr(R)
 
 
 (* Modules to build the Zone interface. *)
@@ -193,7 +293,7 @@ type cache_type = {
   zone : Area.t (* The zone which has already been requested. *) ;
   future_scans : (Bbox.t * AttrDiff.t * ScanId.t * Bbox.t) Seq.t (* Planned scans, with the corresponding bbox, knowledge level, scan id, and the overall bbox. *) ;
   lookup : AttrDiff.t (* The current set of attributes that we are interested in. *) ;
-  continuations : (objects -> unit) ScanId.Map.t (* Continuations to call when the corresponding scan has been completed. *) ;
+  continuations : (objects -> bool -> unit Lwt.t) ScanId.Map.t (* Continuations to call when the corresponding scan has been completed. *) ;
   runner : Runner.t (* Some information about the runner. *)
 }
 
@@ -207,22 +307,31 @@ let cache =
     future_scans = Seq.empty ;
     lookup = AttrDiff.bot ;
     continuations = ScanId.Map.empty ;
+    runner = Runner.init
   }
 
 let set_lookup l =
   cache := { !cache with lookup = AttrDiff.add l }
 
 
+(* State whether there are still requests of the provided id. *)
+let still_requests id =
+  Seq.exists (fun (_bbox, _k, id', _bbox_englobing) -> id' = id) !cache.future_scans
+
+(* Same, but for a given bbox. *)
+let still_requests_bbox bbox =
+  Seq.exists (fun (bbox', _k, _id, _bbox_englobing) -> Bbox.overlap bbox bbox') !cache.future_scans
+
 (* As of get_objects, return all the objects within a given bbox, but without actually
   performing any request. *)
-let get_objects_raw id bbox =
+let get_objects_raw bbox =
   let spatial = Area.get_spatial bbox ~partial:true !cache.zone in
   let (ways, polygons) = Spatial.partition spatial in
   {
     nodes = Area.get_punctual bbox !cache.zone ;
-    ways = List.of_seq ways ;
-    polygons = List.of_seq polygons ;
-    partial = Seq.exists (fun (_bbox, _k, id', _bbox_englobing) -> id' = id) !cache.future_scans
+    ways = ways ;
+    polygons = polygons ;
+    (* partial = still_requests_bbox bbox *)
   }
 
 (* Get the first task to be performed, and scans it. *)
@@ -232,27 +341,22 @@ let runner_task () =
     | None -> Lwt.return ()
     | Some ((bbox, k, id, bbox_englobing), s) ->
       cache := { !cache with future_scans = s } ;
-      let request = Request.build bbox (AttrDiff.to_list k) in
       let zone =
-        let objects = (* TODO: Use Get. *)
-          {
-            nodes = Seq.empty ;
-            ways = Seq.empty ;
-            polygons = Seq.empty ;
-            partial = false (* It is not partial for the inner bbox. *)
-          } in
+        let zone = !cache.zone in
+        let objects =
+          let objects = Get.get bbox (AttrDiff.to_list k) in
+          let module Convert = MapRepr(RawAttr)(R) in
+          Convert.map_objects objects in
         let zone = Seq.fold_left Area.add_punctual zone objects.nodes in
         let zone =
-          Seq.fold_left (fun w -> Area.add_spatial (Spatial.Way w)) zone objects.ways in
+          Seq.fold_left (fun zone w -> Area.add_spatial zone (Spatial.Way w)) zone objects.ways in
         let zone =
-          Seq.fold_left (fun p -> Area.add_spatial (Spatial.Polygon p)) zone objects.polygons in
+          Seq.fold_left (fun zone p -> Area.add_spatial zone (Spatial.Polygon p)) zone objects.polygons in
         zone in
       cache := { !cache with zone = zone } ;
-      let () =
-        match ScanId.MapScanId.Map.find_opt id !cache.continuations with
-        | None -> ()
-        | Some f -> f (get_objects_raw id bbox_englobing) in
-      Lwt.return () in
+      match ScanId.Map.find_opt id !cache.continuations with
+      | None -> Lwt.return ()
+      | Some f -> f (get_objects_raw bbox_englobing) (still_requests id) in
   Lwt.return (not (Seq.is_empty !cache.future_scans))
 
 (* Set a bbox for future scanning.
@@ -272,11 +376,12 @@ let remove id =
                  !cache.future_scans ;
                continuations = ScanId.Map.remove id !cache.continuations }
 
-let get_objects bbox ?(update=fun _ -> ()) =
+let get_objects bbox update =
   let id = ScanId.get () in
-  cache := { !cache with continuations = ScanId.Map.add id update } ;
+  cache := { !cache with continuations = ScanId.Map.add id update !cache.continuations } ;
   scan id bbox !cache.lookup ;
-  (get_objects_raw id bbox, fun () -> remove id)
+  let%lwt () = update (get_objects_raw bbox) (still_requests id) in
+  Lwt.return (fun () -> Lwt.return (remove id))
 
 end
 
